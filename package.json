@@ -1,0 +1,26 @@
+{
+  "name": "maltworks-cloud-api",
+  "version": "5.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create maltworks-production",
+    "db:migrate:local": "wrangler d1 migrations apply maltworks-production --local",
+    "db:migrate:remote": "wrangler d1 migrations apply maltworks-production --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.20.1",
+    "@cloudflare/workers-types": "5.20260801.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10",
+    "wrangler": "4.118.0"
+  },
+  "overrides": {
+    "undici": "7.29.0"
+  }
+}

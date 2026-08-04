@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maltworks-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-03",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "APP_ORIGIN": "https://app.maltworks.com.br",
+    "SESSION_TTL_DAYS": "30"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "maltworks-production",
+      "database_id": "134f4884-ba6e-4f6d-88ef-7b3b021c944d",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+BOOTSTRAP_SECRET=troque-por-um-segredo-longo-e-aleatorio
+PASSWORD_PEPPER=troque-por-outro-segredo-longo-e-independente
