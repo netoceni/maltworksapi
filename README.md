@@ -57,6 +57,7 @@ Primeiro servidor cloud do Maltworks Controller, feito para Cloudflare Workers +
 | --- | --- | --- |
 | GET | `/health` | Saude da API e do D1 |
 | POST | `/v1/telemetry` | Telemetria do ESP32 |
+| POST | `/v1/sales/leads` | Registra contato comercial e notifica vendas |
 | POST | `/v1/auth/bootstrap` | Cria o primeiro proprietario, uma unica vez |
 | POST | `/v1/auth/login` | Login do painel |
 | POST | `/v1/auth/recovery/reset-password` | Redefinicao temporaria protegida por segredo |
@@ -79,6 +80,23 @@ Primeiro servidor cloud do Maltworks Controller, feito para Cloudflare Workers +
 | POST | `/v1/devices/:id/fermentation/readings` | Adiciona uma leitura manual |
 | DELETE | `/v1/devices/:id/fermentation/readings/:readingId` | Exclui uma leitura manual |
 | POST | `/v1/devices/:id/fermentation/finish` | Encerra o acompanhamento atual |
+
+## Contatos comerciais por e-mail
+
+O endpoint publico `/v1/sales/leads` salva nome, e-mail, celular e consentimento
+no D1. Configure `RESEND_API_KEY`, `SALES_EMAIL_FROM` e `SALES_EMAIL_TO` como
+secrets ou variaveis do Worker para enviar a notificacao pelo Resend. Se o
+provedor estiver indisponivel, o lead permanece salvo com o estado da
+notificacao para consulta e reprocessamento.
+
+```powershell
+npx.cmd wrangler secret put RESEND_API_KEY
+npx.cmd wrangler secret put SALES_EMAIL_FROM
+npx.cmd wrangler secret put SALES_EMAIL_TO
+```
+
+O remetente deve pertencer a um dominio validado no Resend. O workflow de
+producao aplica as migracoes D1 pendentes antes de publicar o Worker.
 
 ## Antes de publicar
 
