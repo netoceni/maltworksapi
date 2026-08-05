@@ -17,6 +17,7 @@ import {
   startFermentation,
 } from "./fermentation";
 import { ApiError } from "./types";
+import { createSalesLead } from "./sales";
 
 const API_VERSION = "5.4.0";
 
@@ -54,6 +55,9 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
 
   if (request.method === "POST" && path === "/v1/telemetry") {
     return ingestTelemetry(request, env, requestId);
+  }
+  if (request.method === "POST" && path === "/v1/sales/leads") {
+    return createSalesLead(request, env, requestId);
   }
   if (request.method === "POST" && path === "/v1/auth/bootstrap") {
     return bootstrap(request, env, requestId);

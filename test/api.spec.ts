@@ -87,6 +87,67 @@ describe("Maltworks Cloud API 5.4.0", () => {
     expect(preflight.headers.get("Access-Control-Allow-Methods")).toContain("DELETE");
   });
 
+  it("stores, normalizes and deduplicates public sales leads", async () => {
+    const request = (body: Record<string, unknown>) => exports.default.fetch(
+      "https://api.maltworks.com.br/v1/sales/leads",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://app.maltworks.com.br",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    const lead = {
+      name: "  Maria   da Silva  ",
+      email: "MARIA@EXAMPLE.COM",
+      phone: "(11) 99999-8888",
+      consent: true,
+      website: "",
+    };
+
+    const created = await request(lead);
+    expect(created.status).toBe(202);
+    expect(created.headers.get("Access-Control-Allow-Origin")).toBe("https://app.maltworks.com.br");
+    expect(await created.json()).toMatchObject({ ok: true, accepted: true });
+
+    const stored = await env.DB.prepare(
+      `SELECT name, email, phone, status, notification_status AS notificationStatus
+         FROM sales_leads WHERE email = ?1`,
+    ).bind("maria@example.com").first<{
+      name: string;
+      email: string;
+      phone: string;
+      status: string;
+      notificationStatus: string;
+    }>();
+    expect(stored).toEqual({
+      name: "Maria da Silva",
+      email: "maria@example.com",
+      phone: "+5511999998888",
+      status: "new",
+      notificationStatus: "not_configured",
+    });
+
+    const duplicate = await request(lead);
+    expect(duplicate.status).toBe(202);
+    const count = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM sales_leads WHERE email = ?1",
+    ).bind("maria@example.com").first<{ count: number }>();
+    expect(count?.count).toBe(1);
+
+    const missingConsent = await request({ ...lead, email: "outra@example.com", consent: false });
+    expect(missingConsent.status).toBe(400);
+
+    const honeypot = await request({ ...lead, email: "bot@example.com", website: "spam.example" });
+    expect(honeypot.status).toBe(202);
+    const bot = await env.DB.prepare(
+      "SELECT id FROM sales_leads WHERE email = ?1",
+    ).bind("bot@example.com").first<{ id: string }>();
+    expect(bot).toBeNull();
+  });
+
   it("registers a pending ESP32, authenticates it and deduplicates telemetry", async () => {
     const legacyTelemetry = telemetry();
     delete (legacyTelemetry.control as Record<string, unknown>).compressorProtectionDurationSeconds;
