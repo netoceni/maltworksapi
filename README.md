@@ -1,4 +1,9 @@
-# Maltworks Cloud API 5.5.0
+# Maltworks Cloud API 5.6.0
+
+## Novidades 5.6.0
+
+- Exclusao segura de controladores por proprietarios e administradores.
+- Limpeza em cascata dos dados cloud para permitir um novo cadastro do equipamento.
 
 ## Novidades 5.5.0
 

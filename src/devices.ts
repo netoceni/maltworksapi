@@ -186,6 +186,93 @@ export async function listDevices(request: Request, env: Env, requestId: string)
   return jsonResponse({ ok: true, devices: rows.results, requestId });
 }
 
+export async function deleteDevice(
+  request: Request,
+  env: Env,
+  requestId: string,
+  deviceId: string,
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  const raw = await readJson(request);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ApiError(400, "INVALID_BODY", "O corpo da requisicao e invalido.");
+  }
+  const body = raw as Record<string, unknown>;
+  const organizationId = selectOrganization(session, body.organizationId);
+  const membership = session.memberships.find(
+    (item) => item.organizationId === organizationId,
+  );
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    throw new ApiError(
+      403,
+      "DEVICE_DELETE_FORBIDDEN",
+      "Somente proprietarios e administradores podem excluir controladores.",
+    );
+  }
+
+  const confirmedDeviceId = typeof body.confirmDeviceId === "string"
+    ? body.confirmDeviceId.trim().toUpperCase()
+    : "";
+  if (confirmedDeviceId !== deviceId) {
+    throw new ApiError(
+      400,
+      "DEVICE_DELETE_CONFIRMATION_REQUIRED",
+      "Digite o Device ID completo para confirmar a exclusao.",
+    );
+  }
+
+  const device = await env.DB.prepare(
+    `SELECT d.name,
+            (SELECT COUNT(*) FROM telemetry t WHERE t.device_id = d.id) AS telemetryCount,
+            (SELECT COUNT(*) FROM fermentation_sessions f WHERE f.device_id = d.id) AS fermentationCount,
+            (SELECT COUNT(*) FROM device_commands c WHERE c.device_id = d.id) AS commandCount
+       FROM devices d
+      WHERE d.id = ?1 AND d.organization_id = ?2`,
+  ).bind(deviceId, organizationId).first<{
+    name: string;
+    telemetryCount: number;
+    fermentationCount: number;
+    commandCount: number;
+  }>();
+  if (!device) {
+    throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado nesta organizacao.");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "DELETE FROM devices WHERE id = ?1 AND organization_id = ?2",
+    ).bind(deviceId, organizationId),
+    env.DB.prepare(
+      `INSERT INTO audit_log (
+         organization_id, user_id, device_id, action, details_json, created_at
+       ) VALUES (?1, ?2, NULL, 'device.deleted', ?3, ?4)`,
+    ).bind(
+      organizationId,
+      session.userId,
+      JSON.stringify({
+        deviceId,
+        name: device.name,
+        deletedTelemetry: device.telemetryCount,
+        deletedFermentations: device.fermentationCount,
+        deletedCommands: device.commandCount,
+      }),
+      now,
+    ),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) < 1) {
+    throw new ApiError(409, "DEVICE_DELETE_CONFLICT", "O controlador ja foi removido.");
+  }
+
+  return jsonResponse({
+    ok: true,
+    deleted: true,
+    device: { id: deviceId, name: device.name },
+    readyForRegistration: true,
+    requestId,
+  });
+}
+
 export async function latestDeviceState(
   request: Request,
   env: Env,
