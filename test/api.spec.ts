@@ -69,11 +69,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.4.0", () => {
+describe("Maltworks Cloud API 5.5.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.4.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.5.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -212,8 +212,7 @@ describe("Maltworks Cloud API 5.4.0", () => {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
       body: JSON.stringify({
-        deviceId,
-        pairingCode: token.slice(-8),
+        registrationToken: `${deviceId}-${token.slice(-16)}`,
         name: "Fermentador principal",
       }),
     });
@@ -655,6 +654,31 @@ describe("Maltworks Cloud API 5.4.0", () => {
       fermentation: { name: "Lager lote 0003", originalGravity: 1.046, active: true },
     });
 
+    const replacementToken = "fedcba9876543210".repeat(4);
+    const requestCredentialRebind = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/devices/claim",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({
+          registrationToken: `${deviceId}-${replacementToken.slice(-16)}`,
+          name: "Fermentador principal",
+        }),
+      },
+    );
+    expect(requestCredentialRebind.status).toBe(202);
+    expect(await requestCredentialRebind.json()).toMatchObject({
+      device: { id: deviceId, status: "reconnecting" },
+    });
+
+    const reauthenticatedTelemetry = await sendTelemetry(
+      telemetry(99),
+      replacementToken,
+    );
+    expect(reauthenticatedTelemetry.status).toBe(200);
+    const rejectedOldCredential = await sendTelemetry(telemetry(100), token);
+    expect(rejectedOldCredential.status).toBe(401);
+
     const rejectedReset = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/auth/recovery/reset-password",
       {
@@ -717,5 +741,87 @@ describe("Maltworks Cloud API 5.4.0", () => {
       },
     );
     expect(newPasswordLogin.status).toBe(200);
+  });
+
+  it("creates a customer account with an empty controller list", async () => {
+    const signup = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/auth/signup",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://app.maltworks.com.br",
+        },
+        body: JSON.stringify({
+          displayName: "Maria da Silva",
+          birthDate: "1990-05-10",
+          phone: "(11) 99999-8888",
+          email: "maria.cliente@example.com",
+          password: "uma-senha-segura-de-cliente",
+          termsAccepted: true,
+        }),
+      },
+    );
+    expect(signup.status).toBe(201);
+    expect(signup.headers.get("Access-Control-Allow-Origin")).toBe("https://app.maltworks.com.br");
+    const signupBody = await signup.json();
+    expect(signupBody).toMatchObject({
+      ok: true,
+      user: {
+        displayName: "Maria da Silva",
+        birthDate: "1990-05-10",
+        phone: "+5511999998888",
+      },
+    });
+
+    const cookie = signup.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "";
+    const me = await exports.default.fetch("https://api.maltworks.com.br/v1/me", {
+      headers: { Cookie: cookie },
+    });
+    expect(me.status).toBe(200);
+    expect(await me.json()).toMatchObject({
+      user: { email: "maria.cliente@example.com", memberships: [{ role: "owner" }] },
+    });
+
+    const devices = await exports.default.fetch("https://api.maltworks.com.br/v1/devices", {
+      headers: { Cookie: cookie },
+    });
+    expect(devices.status).toBe(200);
+    expect(await devices.json()).toMatchObject({ devices: [] });
+
+    const duplicate = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/auth/signup",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Outra Maria",
+          birthDate: "1992-02-20",
+          email: "MARIA.CLIENTE@example.com",
+          password: "outra-senha-segura-de-cliente",
+          termsAccepted: true,
+        }),
+      },
+    );
+    expect(duplicate.status).toBe(409);
+
+    const underage = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/auth/signup",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Cliente Menor",
+          birthDate: "2012-01-01",
+          email: "menor@example.com",
+          password: "senha-segura-nao-utilizada",
+          termsAccepted: true,
+        }),
+      },
+    );
+    expect(underage.status).toBe(400);
+    expect(await underage.json()).toMatchObject({
+      error: { code: "MINIMUM_AGE_REQUIRED" },
+    });
   });
 });

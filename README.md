@@ -1,4 +1,10 @@
-# Maltworks Cloud API 5.4.0
+# Maltworks Cloud API 5.5.0
+
+## Novidades 5.5.0
+
+- Cadastro público de clientes com perfil e sessão segura.
+- Conta nova inicia sem controladores e pronta para onboarding.
+- Cadastro de controlador por código único completo, sem expor o segredo interno do firmware.
 
 ## Novidades 5.4.0
 

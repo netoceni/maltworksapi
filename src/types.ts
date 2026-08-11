@@ -72,6 +72,8 @@ export interface SessionContext {
   userId: string;
   email: string;
   displayName: string;
+  birthDate: string | null;
+  phone: string | null;
   memberships: Array<{
     organizationId: string;
     organizationName: string;

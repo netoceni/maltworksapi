@@ -1,4 +1,4 @@
-import { bootstrap, login, logout, me, resetPassword } from "./auth";
+import { bootstrap, login, logout, me, resetPassword, signup } from "./auth";
 import {
   createAlarmCommand,
   createConfigurationCommand,
@@ -19,7 +19,7 @@ import {
 import { ApiError } from "./types";
 import { createSalesLead } from "./sales";
 
-const API_VERSION = "5.4.0";
+const API_VERSION = "5.5.0";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -64,6 +64,9 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
   }
   if (request.method === "POST" && path === "/v1/auth/login") {
     return login(request, env, requestId);
+  }
+  if (request.method === "POST" && path === "/v1/auth/signup") {
+    return signup(request, env, requestId);
   }
   if (request.method === "POST" && path === "/v1/auth/recovery/reset-password") {
     return resetPassword(request, env, requestId);

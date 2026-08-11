@@ -25,7 +25,7 @@ export async function ingestTelemetry(request: Request, env: Env, requestId: str
 
   const now = Math.floor(Date.now() / 1000);
   const tokenHash = await sha256Hex(token.toLowerCase());
-  const pairingCodeHash = await sha256Hex(token.slice(-8).toLowerCase());
+  const pairingCodeHash = await sha256Hex(token.slice(-16).toLowerCase());
   const registeredNow = await ensurePendingDevice(
     env.DB,
     payload,
@@ -35,17 +35,50 @@ export async function ingestTelemetry(request: Request, env: Env, requestId: str
   );
 
   const credential = await env.DB.prepare(
-    `SELECT d.status, c.token_hash AS tokenHash
+    `SELECT d.status, c.token_hash AS tokenHash,
+            c.pairing_code_hash AS pairingCodeHash,
+            c.rebind_expires_at AS rebindExpiresAt
        FROM devices d
        JOIN device_credentials c ON c.device_id = d.id
       WHERE d.id = ?1`,
-  ).bind(payload.deviceId).first<{ status: string; tokenHash: string }>();
+  ).bind(payload.deviceId).first<{
+    status: string;
+    tokenHash: string;
+    pairingCodeHash: string;
+    rebindExpiresAt: number | null;
+  }>();
 
-  if (!credential || !constantTimeEqual(credential.tokenHash, tokenHash)) {
+  if (!credential) {
+    throw new ApiError(401, "DEVICE_AUTHENTICATION_FAILED", "Credencial do dispositivo rejeitada.");
+  }
+  let tokenAuthenticated = constantTimeEqual(credential.tokenHash, tokenHash);
+  if (
+    !tokenAuthenticated &&
+    (credential.rebindExpiresAt ?? 0) >= now &&
+    constantTimeEqual(credential.pairingCodeHash, pairingCodeHash)
+  ) {
+    const rotated = await env.DB.prepare(
+      `UPDATE device_credentials
+          SET token_hash = ?2, rebind_expires_at = NULL,
+              rebind_requested_by_user_id = NULL, rotated_at = ?3
+        WHERE device_id = ?1 AND rebind_expires_at >= ?3`,
+    ).bind(payload.deviceId, tokenHash, now).run();
+    tokenAuthenticated = (rotated.meta.changes ?? 0) === 1;
+  }
+  if (!tokenAuthenticated) {
     throw new ApiError(401, "DEVICE_AUTHENTICATION_FAILED", "Credencial do dispositivo rejeitada.");
   }
   if (credential.status === "disabled") {
     throw new ApiError(403, "DEVICE_DISABLED", "Este dispositivo esta desabilitado.");
+  }
+
+  if (!constantTimeEqual(credential.pairingCodeHash, pairingCodeHash)) {
+    await env.DB.prepare(
+      `UPDATE device_credentials
+          SET pairing_code_hash = ?2, rebind_expires_at = NULL,
+              rebind_requested_by_user_id = NULL
+        WHERE device_id = ?1`,
+    ).bind(payload.deviceId, pairingCodeHash).run();
   }
 
   const payloadJson = JSON.stringify(payload);
