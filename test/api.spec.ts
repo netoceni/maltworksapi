@@ -845,6 +845,16 @@ describe("Maltworks Cloud API 5.7.0", () => {
     );
     expect(newPasswordLogin.status).toBe(200);
 
+    const portalMe = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/me",
+      { headers: { Cookie: newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "" } },
+    );
+    expect(portalMe.status).toBe(200);
+    expect(await portalMe.json()).toMatchObject({
+      user: { email: "neto@example.com", memberships: [{ role: "owner" }] },
+      capabilities: { systemAdmin: true },
+    });
+
     const adminMe = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/admin/me",
       { headers: { Cookie: newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "" } },
@@ -929,6 +939,7 @@ describe("Maltworks Cloud API 5.7.0", () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({
       user: { email: "maria.cliente@example.com", memberships: [{ role: "owner" }] },
+      capabilities: { systemAdmin: false },
     });
 
     const devices = await exports.default.fetch("https://api.maltworks.com.br/v1/devices", {
