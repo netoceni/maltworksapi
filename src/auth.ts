@@ -146,6 +146,10 @@ export async function bootstrap(request: Request, env: Env, requestId: string): 
       `INSERT INTO organization_members (organization_id, user_id, role, created_at)
        VALUES (?1, ?2, 'owner', ?3)`,
     ).bind(organizationId, userId, now),
+    env.DB.prepare(
+      `INSERT INTO system_admins (user_id, role, created_at)
+       VALUES (?1, 'superadmin', ?2)`,
+    ).bind(userId, now),
     session.statement,
   ]);
 
@@ -299,7 +303,15 @@ export async function logout(request: Request, env: Env, requestId: string): Pro
 
 export async function me(request: Request, env: Env, requestId: string): Promise<Response> {
   const session = await requireSession(request, env);
-  return jsonResponse({ ok: true, user: session, requestId });
+  const systemAdmin = await env.DB.prepare(
+    "SELECT 1 AS allowed FROM system_admins WHERE user_id = ?1",
+  ).bind(session.userId).first<{ allowed: number }>();
+  return jsonResponse({
+    ok: true,
+    user: session,
+    capabilities: { systemAdmin: systemAdmin?.allowed === 1 },
+    requestId,
+  });
 }
 
 export async function requireSession(request: Request, env: Env): Promise<SessionContext> {

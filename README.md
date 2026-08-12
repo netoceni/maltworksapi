@@ -1,4 +1,12 @@
-# Maltworks Cloud API 5.6.0
+# Maltworks Cloud API 5.7.0
+
+## Novidades 5.7.0
+
+- autorização administrativa de sistema separada das funções de cada organização;
+- visão geral de contas, organizações e controladores;
+- lista pseudonimizada sem e-mail, nome, senha, sessão ou token;
+- suporte ao painel independente em `admin.maltworks.com.br`;
+- bloqueio explícito de contas comuns nas rotas `/v1/admin`.
 
 ## Novidades 5.6.0
 
@@ -74,6 +82,9 @@ Primeiro servidor cloud do Maltworks Controller, feito para Cloudflare Workers +
 | POST | `/v1/auth/recovery/reset-password` | Redefinicao temporaria protegida por segredo |
 | POST | `/v1/auth/logout` | Encerra a sessao |
 | GET | `/v1/me` | Usuario e organizacoes atuais |
+| GET | `/v1/admin/me` | Valida a função administrativa do sistema |
+| GET | `/v1/admin/overview` | Indicadores gerais da plataforma |
+| GET | `/v1/admin/users` | Lista pseudonimizada e paginada de contas |
 | POST | `/v1/devices/claim` | Vincula um ESP32 pendente |
 | GET | `/v1/devices` | Lista controladores da organizacao |
 | GET | `/v1/devices/:id/latest` | Estado mais recente |
@@ -114,5 +125,5 @@ producao aplica as migracoes D1 pendentes antes de publicar o Worker.
 Este pacote de atualizacao ja esta configurado para o banco D1
 `maltworks-production` criado durante a implantacao da versao 5.1.0.
 
-Para atualizar a instalacao existente, leia `ATUALIZACAO_5_4_0.md`. O arquivo
+Para atualizar a instalacao existente, leia `ATUALIZACAO_5_7_0.md`. O arquivo
 `DEPLOY.md` permanece como referencia para uma instalacao nova.

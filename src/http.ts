@@ -99,7 +99,7 @@ export function clearSessionCookie(): string {
 
 export function addCors(response: Response, request: Request, env: Env): Response {
   const origin = request.headers.get("Origin");
-  if (!origin || origin !== env.APP_ORIGIN) return response;
+  if (!origin || !allowedOrigin(origin, env)) return response;
 
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", origin);
@@ -114,7 +114,7 @@ export function addCors(response: Response, request: Request, env: Env): Respons
 
 export function preflightResponse(request: Request, env: Env): Response {
   const origin = request.headers.get("Origin");
-  if (origin !== env.APP_ORIGIN) {
+  if (!origin || !allowedOrigin(origin, env)) {
     throw new ApiError(403, "ORIGIN_NOT_ALLOWED", "Origem nao autorizada.");
   }
 
@@ -129,4 +129,8 @@ export function preflightResponse(request: Request, env: Env): Response {
       Vary: "Origin",
     },
   });
+}
+
+function allowedOrigin(origin: string, env: Env): boolean {
+  return origin === env.APP_ORIGIN || origin === env.ADMIN_ORIGIN;
 }
