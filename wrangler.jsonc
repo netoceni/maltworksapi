@@ -9,7 +9,7 @@
   },
   "vars": {
     "APP_ORIGIN": "https://app.maltworks.com.br",
-    "ADMIN_ORIGIN": "https://admin.maltworks.com.br",
+    "ADMIN_ORIGIN": "https://maltworks-admin.pages.dev",
     "SESSION_TTL_DAYS": "30"
   },
   "d1_databases": [
