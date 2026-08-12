@@ -12,41 +12,114 @@ export async function claimDevice(request: Request, env: Env, requestId: string)
   }
   const body = raw as Record<string, unknown>;
   const organizationId = selectOrganization(session, body.organizationId);
-  const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim().toUpperCase() : "";
-  const pairingCode = typeof body.pairingCode === "string" ? body.pairingCode.trim().toLowerCase() : "";
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!/^MW-[0-9A-F]{12}$/.test(deviceId)) {
-    throw new ApiError(400, "INVALID_DEVICE_ID", "Device ID invalido.");
-  }
-  if (!/^[0-9a-f]{8}$/.test(pairingCode)) {
-    throw new ApiError(400, "INVALID_PAIRING_CODE", "Codigo de vinculo invalido.");
-  }
   if (name.length < 2 || name.length > 80) {
     throw new ApiError(400, "INVALID_DEVICE_NAME", "O nome deve ter entre 2 e 80 caracteres.");
   }
 
-  const device = await env.DB.prepare(
-    `SELECT d.organization_id AS organizationId, d.status,
-            c.pairing_code_hash AS pairingCodeHash
-       FROM devices d
-       JOIN device_credentials c ON c.device_id = d.id
-      WHERE d.id = ?1`,
-  ).bind(deviceId).first<{
+  const registration = normalizeRegistrationToken(body.registrationToken);
+  const legacyDeviceId = typeof body.deviceId === "string" ? body.deviceId.trim().toUpperCase() : "";
+  const legacyPairingCode = typeof body.pairingCode === "string"
+    ? body.pairingCode.replace(/[^0-9a-f]/giu, "").toLowerCase()
+    : "";
+
+  let deviceId = registration?.deviceId ?? "";
+  let suppliedPairingCode = registration?.pairingCode ?? "";
+  let device: {
+    id?: string;
     organizationId: string | null;
     status: string;
     pairingCodeHash: string;
-  }>();
-  if (!device) {
-    throw new ApiError(404, "DEVICE_NOT_FOUND", "O controlador ainda nao enviou telemetria ao servidor.");
-  }
-  if (device.organizationId) {
-    throw new ApiError(409, "DEVICE_ALREADY_CLAIMED", "Este controlador ja esta vinculado.");
-  }
-  const suppliedHash = await sha256Hex(pairingCode);
-  if (!constantTimeEqual(suppliedHash, device.pairingCodeHash)) {
-    throw new ApiError(401, "PAIRING_CODE_REJECTED", "Device ID ou codigo de vinculo incorreto.");
+  } | null = null;
+
+  if (registration) {
+    device = await env.DB.prepare(
+      `SELECT d.id, d.organization_id AS organizationId, d.status,
+              c.pairing_code_hash AS pairingCodeHash
+         FROM devices d
+         JOIN device_credentials c ON c.device_id = d.id
+        WHERE d.id = ?1`,
+    ).bind(deviceId).first<{
+      id: string;
+      organizationId: string | null;
+      status: string;
+      pairingCodeHash: string;
+    }>();
+  } else {
+    if (!/^MW-[0-9A-F]{12}$/.test(legacyDeviceId)) {
+      throw new ApiError(400, "INVALID_REGISTRATION_TOKEN", "Informe o codigo de cadastro exibido pelo controlador.");
+    }
+    if (!/^[0-9a-f]{8}$/.test(legacyPairingCode) && !/^[0-9a-f]{16}$/.test(legacyPairingCode)) {
+      throw new ApiError(400, "INVALID_REGISTRATION_TOKEN", "Informe um codigo de cadastro valido.");
+    }
+    deviceId = legacyDeviceId;
+    suppliedPairingCode = legacyPairingCode;
+    device = await env.DB.prepare(
+      `SELECT d.organization_id AS organizationId, d.status,
+              c.pairing_code_hash AS pairingCodeHash
+         FROM devices d
+         JOIN device_credentials c ON c.device_id = d.id
+        WHERE d.id = ?1`,
+    ).bind(deviceId).first<{
+      organizationId: string | null;
+      status: string;
+      pairingCodeHash: string;
+    }>();
   }
 
+  if (!device) {
+    throw new ApiError(404, "REGISTRATION_TOKEN_NOT_FOUND", "Codigo nao encontrado. Conecte o controlador ao Wi-Fi e tente novamente.");
+  }
+  if (device.organizationId) {
+    if (device.organizationId !== organizationId) {
+      throw new ApiError(409, "DEVICE_ALREADY_CLAIMED", "Este controlador pertence a outra conta.");
+    }
+
+    const suppliedHash = await sha256Hex(suppliedPairingCode);
+    if (constantTimeEqual(suppliedHash, device.pairingCodeHash)) {
+      return jsonResponse({
+        ok: true,
+        device: { id: deviceId, name, status: "active", alreadyRegistered: true },
+        requestId,
+      });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const rebindExpiresAt = now + 15 * 60;
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE device_credentials
+            SET pairing_code_hash = ?2, rebind_expires_at = ?3,
+                rebind_requested_by_user_id = ?4
+          WHERE device_id = ?1`,
+      ).bind(deviceId, suppliedHash, rebindExpiresAt, session.userId),
+      env.DB.prepare(
+        "UPDATE devices SET name = ?2, updated_at = ?3 WHERE id = ?1",
+      ).bind(deviceId, name, now),
+      env.DB.prepare(
+        `INSERT INTO audit_log (
+           organization_id, user_id, device_id, action, details_json, created_at
+         ) VALUES (?1, ?2, ?3, 'device.credential_rebind_requested', ?4, ?5)`,
+      ).bind(
+        organizationId,
+        session.userId,
+        deviceId,
+        JSON.stringify({ expiresAt: rebindExpiresAt }),
+        now,
+      ),
+    ]);
+
+    return jsonResponse({
+      ok: true,
+      device: { id: deviceId, name, status: "reconnecting", rebindExpiresAt },
+      requestId,
+    }, 202);
+  }
+
+  const suppliedHash = await sha256Hex(suppliedPairingCode);
+  if (!constantTimeEqual(suppliedHash, device.pairingCodeHash)) {
+    throw new ApiError(401, "REGISTRATION_TOKEN_REJECTED", "Codigo de cadastro incorreto.");
+  }
   const now = Math.floor(Date.now() / 1000);
   const result = await env.DB.prepare(
     `UPDATE devices
@@ -73,6 +146,26 @@ export async function claimDevice(request: Request, env: Env, requestId: string)
   return jsonResponse({ ok: true, device: { id: deviceId, name, status: "active" }, requestId }, 201);
 }
 
+function normalizeRegistrationToken(value: unknown): {
+  deviceId: string;
+  pairingCode: string;
+} | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const normalized = value.replace(/[^a-z0-9]/giu, "").toUpperCase();
+  const match = /^MW([0-9A-F]{12})([0-9A-F]{16})$/u.exec(normalized);
+  if (!match?.[1] || !match[2]) {
+    throw new ApiError(
+      400,
+      "INVALID_REGISTRATION_TOKEN",
+      "Informe o codigo completo no formato mostrado pelo controlador.",
+    );
+  }
+  return {
+    deviceId: `MW-${match[1]}`,
+    pairingCode: match[2].toLowerCase(),
+  };
+}
+
 export async function listDevices(request: Request, env: Env, requestId: string): Promise<Response> {
   const session = await requireSession(request, env);
   const organizationId = selectOrganization(session, new URL(request.url).searchParams.get("organizationId"));
@@ -91,6 +184,93 @@ export async function listDevices(request: Request, env: Env, requestId: string)
       ORDER BY d.name COLLATE NOCASE ASC`,
   ).bind(organizationId).all();
   return jsonResponse({ ok: true, devices: rows.results, requestId });
+}
+
+export async function deleteDevice(
+  request: Request,
+  env: Env,
+  requestId: string,
+  deviceId: string,
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  const raw = await readJson(request);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ApiError(400, "INVALID_BODY", "O corpo da requisicao e invalido.");
+  }
+  const body = raw as Record<string, unknown>;
+  const organizationId = selectOrganization(session, body.organizationId);
+  const membership = session.memberships.find(
+    (item) => item.organizationId === organizationId,
+  );
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    throw new ApiError(
+      403,
+      "DEVICE_DELETE_FORBIDDEN",
+      "Somente proprietarios e administradores podem excluir controladores.",
+    );
+  }
+
+  const confirmedDeviceId = typeof body.confirmDeviceId === "string"
+    ? body.confirmDeviceId.trim().toUpperCase()
+    : "";
+  if (confirmedDeviceId !== deviceId) {
+    throw new ApiError(
+      400,
+      "DEVICE_DELETE_CONFIRMATION_REQUIRED",
+      "Digite o Device ID completo para confirmar a exclusao.",
+    );
+  }
+
+  const device = await env.DB.prepare(
+    `SELECT d.name,
+            (SELECT COUNT(*) FROM telemetry t WHERE t.device_id = d.id) AS telemetryCount,
+            (SELECT COUNT(*) FROM fermentation_sessions f WHERE f.device_id = d.id) AS fermentationCount,
+            (SELECT COUNT(*) FROM device_commands c WHERE c.device_id = d.id) AS commandCount
+       FROM devices d
+      WHERE d.id = ?1 AND d.organization_id = ?2`,
+  ).bind(deviceId, organizationId).first<{
+    name: string;
+    telemetryCount: number;
+    fermentationCount: number;
+    commandCount: number;
+  }>();
+  if (!device) {
+    throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado nesta organizacao.");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "DELETE FROM devices WHERE id = ?1 AND organization_id = ?2",
+    ).bind(deviceId, organizationId),
+    env.DB.prepare(
+      `INSERT INTO audit_log (
+         organization_id, user_id, device_id, action, details_json, created_at
+       ) VALUES (?1, ?2, NULL, 'device.deleted', ?3, ?4)`,
+    ).bind(
+      organizationId,
+      session.userId,
+      JSON.stringify({
+        deviceId,
+        name: device.name,
+        deletedTelemetry: device.telemetryCount,
+        deletedFermentations: device.fermentationCount,
+        deletedCommands: device.commandCount,
+      }),
+      now,
+    ),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) < 1) {
+    throw new ApiError(409, "DEVICE_DELETE_CONFLICT", "O controlador ja foi removido.");
+  }
+
+  return jsonResponse({
+    ok: true,
+    deleted: true,
+    device: { id: deviceId, name: device.name },
+    readyForRegistration: true,
+    requestId,
+  });
 }
 
 export async function latestDeviceState(

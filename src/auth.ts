@@ -11,6 +11,88 @@ import { ApiError, type SessionContext } from "./types";
 
 const SESSION_COOKIE = "mw_session";
 
+export async function signup(request: Request, env: Env, requestId: string): Promise<Response> {
+  const body = objectValue(await readJson(request));
+  const displayName = requiredString(body.displayName, "displayName", 3, 100);
+  const birthDate = birthDateValue(body.birthDate);
+  const phone = optionalPhone(body.phone);
+  const email = normalizedEmail(body.email);
+  const password = passwordValue(body.password);
+  if (body.termsAccepted !== true) {
+    throw new ApiError(400, "TERMS_REQUIRED", "Aceite os termos de uso e a politica de privacidade.");
+  }
+
+  const existing = await env.DB.prepare(
+    "SELECT id FROM users WHERE email = ?1",
+  ).bind(email).first<{ id: string }>();
+  if (existing) {
+    throw new ApiError(409, "EMAIL_ALREADY_REGISTERED", "Ja existe uma conta com este e-mail.");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const organizationId = randomId("org");
+  const userId = randomId("usr");
+  const passwordData = await hashPassword(password, passwordPepper(env));
+  const session = await createSession(env, userId, now);
+  const firstName = displayName.split(/\s+/u)[0] || "Cliente";
+
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO organizations (id, name, slug, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?4)`,
+      ).bind(
+        organizationId,
+        `${firstName} - Maltworks`,
+        `cliente-${organizationId.slice(-12)}`,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO users (
+           id, email, password_hash, password_salt, password_iterations,
+           display_name, birth_date, phone, terms_accepted_at,
+           created_at, updated_at, last_login_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?9, ?9)`,
+      ).bind(
+        userId,
+        email,
+        passwordData.hash,
+        passwordData.salt,
+        passwordData.iterations,
+        displayName,
+        birthDate,
+        phone,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO organization_members (organization_id, user_id, role, created_at)
+         VALUES (?1, ?2, 'owner', ?3)`,
+      ).bind(organizationId, userId, now),
+      session.statement,
+    ]);
+  } catch (error) {
+    if (String(error).toLowerCase().includes("unique")) {
+      throw new ApiError(409, "EMAIL_ALREADY_REGISTERED", "Ja existe uma conta com este e-mail.");
+    }
+    throw error;
+  }
+
+  return jsonResponse(
+    {
+      ok: true,
+      user: { id: userId, email, displayName, birthDate, phone },
+      organization: {
+        id: organizationId,
+        name: `${firstName} - Maltworks`,
+        role: "owner",
+      },
+      requestId,
+    },
+    201,
+    { "Set-Cookie": sessionCookie(session.token, session.maxAgeSeconds) },
+  );
+}
+
 export async function bootstrap(request: Request, env: Env, requestId: string): Promise<Response> {
   if (!env.BOOTSTRAP_SECRET || env.BOOTSTRAP_SECRET.length < 24) {
     throw new ApiError(503, "BOOTSTRAP_NOT_CONFIGURED", "O segredo inicial do servidor nao foi configurado.");
@@ -229,11 +311,18 @@ export async function requireSession(request: Request, env: Env): Promise<Sessio
   const now = Math.floor(Date.now() / 1000);
   const tokenHash = await sha256Hex(token);
   const user = await env.DB.prepare(
-    `SELECT u.id, u.email, u.display_name AS displayName
+    `SELECT u.id, u.email, u.display_name AS displayName,
+            u.birth_date AS birthDate, u.phone
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
-  ).bind(tokenHash, now).first<{ id: string; email: string; displayName: string }>();
+  ).bind(tokenHash, now).first<{
+    id: string;
+    email: string;
+    displayName: string;
+    birthDate: string | null;
+    phone: string | null;
+  }>();
   if (!user) {
     throw new ApiError(401, "SESSION_EXPIRED", "Sua sessao expirou. Faca login novamente.");
   }
@@ -254,6 +343,8 @@ export async function requireSession(request: Request, env: Env): Promise<Sessio
     userId: user.id,
     email: user.email,
     displayName: user.displayName,
+    birthDate: user.birthDate,
+    phone: user.phone,
     memberships: memberships.results,
   };
 }
@@ -320,6 +411,53 @@ function passwordValue(value: unknown): string {
     throw new ApiError(400, "INVALID_PASSWORD", "A senha deve ter entre 12 e 128 caracteres.");
   }
   return value;
+}
+
+function birthDateValue(value: unknown): string {
+  const birthDate = requiredString(value, "birthDate", 10, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(birthDate);
+  if (!match) {
+    throw new ApiError(400, "INVALID_BIRTH_DATE", "Informe uma data de nascimento valida.");
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new ApiError(400, "INVALID_BIRTH_DATE", "Informe uma data de nascimento valida.");
+  }
+
+  const today = new Date();
+  let age = today.getUTCFullYear() - year;
+  if (
+    today.getUTCMonth() < month - 1 ||
+    (today.getUTCMonth() === month - 1 && today.getUTCDate() < day)
+  ) {
+    age -= 1;
+  }
+  if (age < 18) {
+    throw new ApiError(400, "MINIMUM_AGE_REQUIRED", "E necessario ter pelo menos 18 anos.");
+  }
+  if (age > 120) {
+    throw new ApiError(400, "INVALID_BIRTH_DATE", "Informe uma data de nascimento valida.");
+  }
+  return birthDate;
+}
+
+function optionalPhone(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") {
+    throw new ApiError(400, "INVALID_PHONE", "Informe um telefone valido.");
+  }
+  const digits = value.replace(/\D/gu, "");
+  if (digits.length < 10 || digits.length > 15) {
+    throw new ApiError(400, "INVALID_PHONE", "Informe um telefone valido com DDD.");
+  }
+  return `+${digits.startsWith("55") ? digits : `55${digits}`}`;
 }
 
 function passwordPepper(env: Env): string {

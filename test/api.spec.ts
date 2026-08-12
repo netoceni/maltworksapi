@@ -69,11 +69,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.4.0", () => {
+describe("Maltworks Cloud API 5.6.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.4.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.6.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -212,8 +212,7 @@ describe("Maltworks Cloud API 5.4.0", () => {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
       body: JSON.stringify({
-        deviceId,
-        pairingCode: token.slice(-8),
+        registrationToken: `${deviceId}-${token.slice(-16)}`,
         name: "Fermentador principal",
       }),
     });
@@ -655,6 +654,134 @@ describe("Maltworks Cloud API 5.4.0", () => {
       fermentation: { name: "Lager lote 0003", originalGravity: 1.046, active: true },
     });
 
+    const replacementToken = "fedcba9876543210".repeat(4);
+    const requestCredentialRebind = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/devices/claim",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({
+          registrationToken: `${deviceId}-${replacementToken.slice(-16)}`,
+          name: "Fermentador principal",
+        }),
+      },
+    );
+    expect(requestCredentialRebind.status).toBe(202);
+    expect(await requestCredentialRebind.json()).toMatchObject({
+      device: { id: deviceId, status: "reconnecting" },
+    });
+
+    const reauthenticatedTelemetry = await sendTelemetry(
+      telemetry(99),
+      replacementToken,
+    );
+    expect(reauthenticatedTelemetry.status).toBe(200);
+    const rejectedOldCredential = await sendTelemetry(telemetry(100), token);
+    expect(rejectedOldCredential.status).toBe(401);
+
+    const unauthenticatedDelete = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmDeviceId: deviceId }),
+      },
+    );
+    expect(unauthenticatedDelete.status).toBe(401);
+
+    const unconfirmedDelete = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({ confirmDeviceId: "MW-000000000000" }),
+      },
+    );
+    expect(unconfirmedDelete.status).toBe(400);
+
+    const deleteController = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({ confirmDeviceId: deviceId }),
+      },
+    );
+    expect(deleteController.status).toBe(200);
+    expect(await deleteController.json()).toMatchObject({
+      ok: true,
+      deleted: true,
+      readyForRegistration: true,
+      device: { id: deviceId, name: "Fermentador principal" },
+    });
+
+    const deletedDevice = await env.DB.prepare(
+      "SELECT id FROM devices WHERE id = ?1",
+    ).bind(deviceId).first();
+    const deletedCredential = await env.DB.prepare(
+      "SELECT device_id FROM device_credentials WHERE device_id = ?1",
+    ).bind(deviceId).first();
+    const deletedTelemetry = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM telemetry WHERE device_id = ?1",
+    ).bind(deviceId).first<{ count: number }>();
+    const deletedLatestState = await env.DB.prepare(
+      "SELECT device_id FROM device_latest_state WHERE device_id = ?1",
+    ).bind(deviceId).first();
+    const deletedConfiguration = await env.DB.prepare(
+      "SELECT device_id FROM device_configurations WHERE device_id = ?1",
+    ).bind(deviceId).first();
+    const deletedCommands = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM device_commands WHERE device_id = ?1",
+    ).bind(deviceId).first<{ count: number }>();
+    const deletedFermentations = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fermentation_sessions WHERE device_id = ?1",
+    ).bind(deviceId).first<{ count: number }>();
+    const deletedFermentationReadings = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM fermentation_readings",
+    ).first<{ count: number }>();
+    const deletionAudit = await env.DB.prepare(
+      `SELECT device_id AS deviceId, details_json AS detailsJson
+         FROM audit_log
+        WHERE organization_id IS NOT NULL AND action = 'device.deleted'
+        ORDER BY id DESC LIMIT 1`,
+    ).first<{ deviceId: string | null; detailsJson: string }>();
+    expect(deletedDevice).toBeNull();
+    expect(deletedCredential).toBeNull();
+    expect(deletedTelemetry?.count).toBe(0);
+    expect(deletedLatestState).toBeNull();
+    expect(deletedConfiguration).toBeNull();
+    expect(deletedCommands?.count).toBe(0);
+    expect(deletedFermentations?.count).toBe(0);
+    expect(deletedFermentationReadings?.count).toBe(0);
+    expect(deletionAudit?.deviceId).toBeNull();
+    expect(JSON.parse(deletionAudit?.detailsJson ?? "{}")).toMatchObject({
+      deviceId,
+      name: "Fermentador principal",
+    });
+
+    const pendingAgain = await sendTelemetry(telemetry(101), replacementToken);
+    expect(pendingAgain.status).toBe(202);
+    expect(await pendingAgain.json()).toMatchObject({
+      ok: true,
+      deviceStatus: "pending",
+    });
+
+    const claimAgain = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/devices/claim",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({
+          registrationToken: `${deviceId}-${replacementToken.slice(-16)}`,
+          name: "Fermentador recadastrado",
+        }),
+      },
+    );
+    expect(claimAgain.status).toBe(201);
+    expect(await claimAgain.json()).toMatchObject({
+      device: { id: deviceId, name: "Fermentador recadastrado", status: "active" },
+    });
+
     const rejectedReset = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/auth/recovery/reset-password",
       {
@@ -717,5 +844,87 @@ describe("Maltworks Cloud API 5.4.0", () => {
       },
     );
     expect(newPasswordLogin.status).toBe(200);
+  });
+
+  it("creates a customer account with an empty controller list", async () => {
+    const signup = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/auth/signup",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://app.maltworks.com.br",
+        },
+        body: JSON.stringify({
+          displayName: "Maria da Silva",
+          birthDate: "1990-05-10",
+          phone: "(11) 99999-8888",
+          email: "maria.cliente@example.com",
+          password: "uma-senha-segura-de-cliente",
+          termsAccepted: true,
+        }),
+      },
+    );
+    expect(signup.status).toBe(201);
+    expect(signup.headers.get("Access-Control-Allow-Origin")).toBe("https://app.maltworks.com.br");
+    const signupBody = await signup.json();
+    expect(signupBody).toMatchObject({
+      ok: true,
+      user: {
+        displayName: "Maria da Silva",
+        birthDate: "1990-05-10",
+        phone: "+5511999998888",
+      },
+    });
+
+    const cookie = signup.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "";
+    const me = await exports.default.fetch("https://api.maltworks.com.br/v1/me", {
+      headers: { Cookie: cookie },
+    });
+    expect(me.status).toBe(200);
+    expect(await me.json()).toMatchObject({
+      user: { email: "maria.cliente@example.com", memberships: [{ role: "owner" }] },
+    });
+
+    const devices = await exports.default.fetch("https://api.maltworks.com.br/v1/devices", {
+      headers: { Cookie: cookie },
+    });
+    expect(devices.status).toBe(200);
+    expect(await devices.json()).toMatchObject({ devices: [] });
+
+    const duplicate = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/auth/signup",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Outra Maria",
+          birthDate: "1992-02-20",
+          email: "MARIA.CLIENTE@example.com",
+          password: "outra-senha-segura-de-cliente",
+          termsAccepted: true,
+        }),
+      },
+    );
+    expect(duplicate.status).toBe(409);
+
+    const underage = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/auth/signup",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Cliente Menor",
+          birthDate: "2012-01-01",
+          email: "menor@example.com",
+          password: "senha-segura-nao-utilizada",
+          termsAccepted: true,
+        }),
+      },
+    );
+    expect(underage.status).toBe(400);
+    expect(await underage.json()).toMatchObject({
+      error: { code: "MINIMUM_AGE_REQUIRED" },
+    });
   });
 });

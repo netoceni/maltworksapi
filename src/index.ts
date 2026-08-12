@@ -1,11 +1,11 @@
-import { bootstrap, login, logout, me, resetPassword } from "./auth";
+import { bootstrap, login, logout, me, resetPassword, signup } from "./auth";
 import {
   createAlarmCommand,
   createConfigurationCommand,
   createProfileCommand,
   createSetpointCommand,
 } from "./commands";
-import { claimDevice, deviceHistory, latestDeviceState, listDevices } from "./devices";
+import { claimDevice, deleteDevice, deviceHistory, latestDeviceState, listDevices } from "./devices";
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
@@ -19,7 +19,7 @@ import {
 import { ApiError } from "./types";
 import { createSalesLead } from "./sales";
 
-const API_VERSION = "5.4.0";
+const API_VERSION = "5.6.0";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -65,6 +65,9 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
   if (request.method === "POST" && path === "/v1/auth/login") {
     return login(request, env, requestId);
   }
+  if (request.method === "POST" && path === "/v1/auth/signup") {
+    return signup(request, env, requestId);
+  }
   if (request.method === "POST" && path === "/v1/auth/recovery/reset-password") {
     return resetPassword(request, env, requestId);
   }
@@ -98,6 +101,10 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
   const latestMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/latest$/u.exec(path);
   if (request.method === "GET" && latestMatch?.[1]) {
     return latestDeviceState(request, env, requestId, latestMatch[1]);
+  }
+  const deviceMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})$/u.exec(path);
+  if (request.method === "DELETE" && deviceMatch?.[1]) {
+    return deleteDevice(request, env, requestId, deviceMatch[1]);
   }
   const historyMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/telemetry$/u.exec(path);
   if (request.method === "GET" && historyMatch?.[1]) {
