@@ -238,6 +238,26 @@ describe("Maltworks Cloud API 5.7.0", () => {
       state: { control: { setpoint: 18 } },
     });
 
+    const rangedHistory = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}/telemetry?range=15&maxPoints=720`,
+      { headers: { Cookie: cookie ?? "" } },
+    );
+    expect(rangedHistory.status).toBe(200);
+    expect(await rangedHistory.json()).toMatchObject({
+      ok: true,
+      deviceId,
+      range: "15",
+      bucketSeconds: 1,
+      totalPoints: 1,
+      points: [{ refrigeratorValue: 18.25, setpoint: 18 }],
+    });
+
+    const invalidHistoryRange = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}/telemetry?range=10`,
+      { headers: { Cookie: cookie ?? "" } },
+    );
+    expect(invalidHistoryRange.status).toBe(400);
+
     const createCommand = await exports.default.fetch(
       `https://api.maltworks.com.br/v1/devices/${deviceId}/commands/setpoint`,
       {

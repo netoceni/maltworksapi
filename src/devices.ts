@@ -313,6 +313,7 @@ export async function deviceHistory(
   const session = await requireSession(request, env);
   const url = new URL(request.url);
   const organizationId = selectOrganization(session, url.searchParams.get("organizationId"));
+  const requestedRange = url.searchParams.get("range");
   const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 500) : 100;
   const before = Number.parseInt(url.searchParams.get("before") ?? "2147483647", 10);
@@ -321,6 +322,80 @@ export async function deviceHistory(
     "SELECT id FROM devices WHERE id = ?1 AND organization_id = ?2",
   ).bind(deviceId, organizationId).first();
   if (!allowed) throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado.");
+
+  if (requestedRange !== null) {
+    const rangeSeconds = requestedRange === "all"
+      ? null
+      : Number.parseInt(requestedRange, 10);
+    if (
+      requestedRange !== "all" &&
+      (!/^\d+$/u.test(requestedRange) ||
+        !Number.isFinite(rangeSeconds) ||
+        rangeSeconds === null ||
+        rangeSeconds < 15 ||
+        rangeSeconds > 31_536_000)
+    ) {
+      throw new ApiError(400, "INVALID_HISTORY_RANGE", "Periodo do historico invalido.");
+    }
+
+    const requestedMaxPoints = Number.parseInt(url.searchParams.get("maxPoints") ?? "720", 10);
+    const maxPoints = Number.isFinite(requestedMaxPoints)
+      ? Math.min(Math.max(requestedMaxPoints, 2), 1_000)
+      : 720;
+    const now = Math.floor(Date.now() / 1000);
+    const since = rangeSeconds === null ? 0 : now - rangeSeconds;
+    const bounds = await env.DB.prepare(
+      `SELECT MIN(received_at) AS minimum, MAX(received_at) AS maximum, COUNT(*) AS count
+         FROM telemetry
+        WHERE device_id = ?1 AND received_at >= ?2`,
+    ).bind(deviceId, since).first<{ minimum: number | null; maximum: number | null; count: number }>();
+
+    if (!bounds?.count || bounds.minimum === null || bounds.maximum === null) {
+      return jsonResponse({
+        ok: true,
+        deviceId,
+        points: [],
+        range: requestedRange,
+        from: rangeSeconds === null ? null : since,
+        to: now,
+        bucketSeconds: 1,
+        totalPoints: 0,
+        requestId,
+      });
+    }
+
+    const spanSeconds = Math.max(bounds.maximum - bounds.minimum + 1, 1);
+    const bucketSeconds = Math.max(Math.ceil(spanSeconds / maxPoints), 1);
+    const rows = await env.DB.prepare(
+      `SELECT MAX(received_at) AS receivedAt,
+              MAX(sent_at) AS sentAt,
+              AVG(refrigerator_value) AS refrigeratorValue,
+              AVG(thermal_well_value) AS thermalWellValue,
+              AVG(setpoint) AS setpoint,
+              MAX(control_state) AS controlState,
+              MAX(cooling) AS cooling,
+              MAX(heating) AS heating,
+              MAX(alarms_active) AS alarmsActive,
+              CAST(ROUND(AVG(rssi)) AS INTEGER) AS rssi
+         FROM telemetry
+        WHERE device_id = ?1 AND received_at >= ?2
+        GROUP BY CAST((received_at - ?3) / ?4 AS INTEGER)
+        ORDER BY receivedAt DESC
+        LIMIT ?5`,
+    ).bind(deviceId, since, bounds.minimum, bucketSeconds, maxPoints).all();
+
+    return jsonResponse({
+      ok: true,
+      deviceId,
+      points: rows.results,
+      range: requestedRange,
+      from: rangeSeconds === null ? bounds.minimum : since,
+      to: rangeSeconds === null ? bounds.maximum : now,
+      bucketSeconds,
+      totalPoints: bounds.count,
+      requestId,
+    });
+  }
 
   const rows = await env.DB.prepare(
     `SELECT received_at AS receivedAt, sent_at AS sentAt,
