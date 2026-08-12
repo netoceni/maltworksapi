@@ -69,11 +69,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.6.0", () => {
+describe("Maltworks Cloud API 5.7.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.6.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.7.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -844,6 +844,51 @@ describe("Maltworks Cloud API 5.6.0", () => {
       },
     );
     expect(newPasswordLogin.status).toBe(200);
+
+    const adminMe = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/admin/me",
+      { headers: { Cookie: newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "" } },
+    );
+    expect(adminMe.status).toBe(200);
+    expect(await adminMe.json()).toMatchObject({
+      ok: true,
+      admin: { displayName: "Neto", role: "superadmin" },
+    });
+
+    const adminUsers = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/admin/users?page=1&limit=25",
+      { headers: { Cookie: newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "" } },
+    );
+    expect(adminUsers.status).toBe(200);
+    const adminUsersBody = await adminUsers.json() as {
+      users: Array<Record<string, unknown>>;
+      privacy: { personalDataIncluded: boolean };
+    };
+    expect(adminUsersBody.users).toHaveLength(1);
+    expect(adminUsersBody.users[0]).not.toHaveProperty("email");
+    expect(adminUsersBody.users[0]).not.toHaveProperty("displayName");
+    expect(adminUsersBody.privacy.personalDataIncluded).toBe(false);
+
+    const adminOverview = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/admin/overview",
+      { headers: { Cookie: newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "" } },
+    );
+    expect(adminOverview.status).toBe(200);
+    expect(await adminOverview.json()).toMatchObject({
+      ok: true,
+      overview: { users: 1, organizations: 1, devices: 1 },
+    });
+
+    await env.DB.prepare("DELETE FROM system_admins WHERE user_id = (SELECT id FROM users LIMIT 1)").run();
+    const forbiddenAdmin = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/admin/overview",
+      { headers: { Cookie: newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "" } },
+    );
+    expect(forbiddenAdmin.status).toBe(403);
+    expect(await forbiddenAdmin.json()).toMatchObject({
+      ok: false,
+      error: { code: "SYSTEM_ADMIN_REQUIRED" },
+    });
   });
 
   it("creates a customer account with an empty controller list", async () => {

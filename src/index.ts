@@ -18,8 +18,9 @@ import {
 } from "./fermentation";
 import { ApiError } from "./types";
 import { createSalesLead } from "./sales";
+import { adminListUsers, adminMe, adminOverview } from "./admin";
 
-const API_VERSION = "5.6.0";
+const API_VERSION = "5.7.0";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -76,6 +77,15 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
   }
   if (request.method === "GET" && path === "/v1/me") {
     return me(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/me") {
+    return adminMe(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/overview") {
+    return adminOverview(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/users") {
+    return adminListUsers(request, env, requestId);
   }
   if (request.method === "POST" && path === "/v1/devices/claim") {
     return claimDevice(request, env, requestId);

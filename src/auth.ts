@@ -146,6 +146,10 @@ export async function bootstrap(request: Request, env: Env, requestId: string): 
       `INSERT INTO organization_members (organization_id, user_id, role, created_at)
        VALUES (?1, ?2, 'owner', ?3)`,
     ).bind(organizationId, userId, now),
+    env.DB.prepare(
+      `INSERT INTO system_admins (user_id, role, created_at)
+       VALUES (?1, 'superadmin', ?2)`,
+    ).bind(userId, now),
     session.statement,
   ]);
 
