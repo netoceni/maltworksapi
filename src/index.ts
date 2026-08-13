@@ -27,6 +27,8 @@ import { ApiError } from "./types";
 import { createSalesLead } from "./sales";
 import { adminListUsers, adminMe, adminOverview } from "./admin";
 import {
+  deleteAllNotifications,
+  deleteNotification,
   getNotificationPreferences,
   listNotifications,
   markAllNotificationsRead,
@@ -35,7 +37,7 @@ import {
   updateNotificationPreferences,
 } from "./notifications";
 
-const API_VERSION = "5.9.1";
+const API_VERSION = "5.10.0";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -125,6 +127,9 @@ async function route(
   if (request.method === "GET" && path === "/v1/notifications") {
     return listNotifications(request, env, requestId);
   }
+  if (request.method === "DELETE" && path === "/v1/notifications") {
+    return deleteAllNotifications(request, env, requestId);
+  }
   if (request.method === "POST" && path === "/v1/notifications/read-all") {
     return markAllNotificationsRead(request, env, requestId);
   }
@@ -138,6 +143,10 @@ async function route(
   const notificationReadMatch = /^\/v1\/notifications\/(ntf_[0-9a-f]{32})\/read$/u.exec(path);
   if (request.method === "POST" && notificationReadMatch?.[1]) {
     return markNotificationRead(request, env, requestId, notificationReadMatch[1]);
+  }
+  const notificationMatch = /^\/v1\/notifications\/(ntf_[0-9a-f]{32})$/u.exec(path);
+  if (request.method === "DELETE" && notificationMatch?.[1]) {
+    return deleteNotification(request, env, requestId, notificationMatch[1]);
   }
 
   const recipeMatch = /^\/v1\/recipes\/(rcp_[0-9a-f]{32})$/u.exec(path);

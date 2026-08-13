@@ -218,7 +218,10 @@ export async function listNotifications(request: Request, env: Env, requestId: s
        LEFT JOIN devices d ON d.id = n.device_id
        LEFT JOIN notification_reads nr
          ON nr.notification_id = n.id AND nr.user_id = ?2
+       LEFT JOIN notification_dismissals nd
+         ON nd.notification_id = n.id AND nd.user_id = ?2
       WHERE n.organization_id = ?1
+        AND nd.notification_id IS NULL
         AND (?3 = 0 OR nr.notification_id IS NULL)
       ORDER BY n.created_at DESC
       LIMIT ?4`,
@@ -283,7 +286,54 @@ export async function markAllNotificationsRead(request: Request, env: Env, reque
     `INSERT INTO notification_reads (notification_id, user_id, read_at)
      SELECT n.id, ?2, ?3 FROM notifications n
       WHERE n.organization_id = ?1
+        AND NOT EXISTS (
+          SELECT 1 FROM notification_dismissals nd
+           WHERE nd.notification_id = n.id AND nd.user_id = ?2
+        )
      ON CONFLICT(notification_id, user_id) DO NOTHING`,
+  ).bind(organizationId, session.userId, now).run();
+  return jsonResponse({ ok: true, unreadCount: 0, requestId });
+}
+
+export async function deleteNotification(
+  request: Request,
+  env: Env,
+  requestId: string,
+  notificationId: string,
+): Promise<Response> {
+  if (!NOTIFICATION_ID_PATTERN.test(notificationId)) {
+    throw new ApiError(400, "INVALID_NOTIFICATION_ID", "Notificação inválida.");
+  }
+  const session = await requireSession(request, env);
+  const body = await optionalBody(request);
+  const organizationId = selectOrganization(session, body.organizationId);
+  const allowed = await env.DB.prepare(
+    "SELECT id FROM notifications WHERE id = ?1 AND organization_id = ?2",
+  ).bind(notificationId, organizationId).first();
+  if (!allowed) throw new ApiError(404, "NOTIFICATION_NOT_FOUND", "Notificação não encontrada.");
+  const now = Math.floor(Date.now() / 1_000);
+  await env.DB.prepare(
+    `INSERT INTO notification_dismissals (notification_id, user_id, dismissed_at)
+     VALUES (?1, ?2, ?3)
+     ON CONFLICT(notification_id, user_id) DO UPDATE SET dismissed_at = excluded.dismissed_at`,
+  ).bind(notificationId, session.userId, now).run();
+  return jsonResponse({
+    ok: true,
+    unreadCount: await unreadCount(env.DB, organizationId, session.userId),
+    requestId,
+  });
+}
+
+export async function deleteAllNotifications(request: Request, env: Env, requestId: string): Promise<Response> {
+  const session = await requireSession(request, env);
+  const body = await optionalBody(request);
+  const organizationId = selectOrganization(session, body.organizationId);
+  const now = Math.floor(Date.now() / 1_000);
+  await env.DB.prepare(
+    `INSERT INTO notification_dismissals (notification_id, user_id, dismissed_at)
+     SELECT n.id, ?2, ?3 FROM notifications n
+      WHERE n.organization_id = ?1
+     ON CONFLICT(notification_id, user_id) DO UPDATE SET dismissed_at = excluded.dismissed_at`,
   ).bind(organizationId, session.userId, now).run();
   return jsonResponse({ ok: true, unreadCount: 0, requestId });
 }
@@ -511,7 +561,11 @@ async function unreadCount(db: D1Database, organizationId: string, userId: strin
        FROM notifications n
        LEFT JOIN notification_reads nr
          ON nr.notification_id = n.id AND nr.user_id = ?2
-      WHERE n.organization_id = ?1 AND nr.notification_id IS NULL`,
+       LEFT JOIN notification_dismissals nd
+         ON nd.notification_id = n.id AND nd.user_id = ?2
+      WHERE n.organization_id = ?1
+        AND nr.notification_id IS NULL
+        AND nd.notification_id IS NULL`,
   ).bind(organizationId, userId).first<{ count: number }>();
   return row?.count ?? 0;
 }

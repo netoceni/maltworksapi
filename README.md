@@ -1,4 +1,9 @@
-# Maltworks Cloud API 5.9.1
+# Maltworks Cloud API 5.10.0
+
+## Novidades 5.10.0
+
+- exclusão individual ou em lote das notificações, isolada por usuário;
+- notificações apagadas deixam de contar como pendentes sem afetar outros membros da organização.
 
 ## Ajustes 5.9.1
 

@@ -70,11 +70,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.9.1", () => {
+describe("Maltworks Cloud API 5.10.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.9.1" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.10.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -1088,6 +1088,29 @@ describe("Maltworks Cloud API 5.9.1", () => {
       { method: "POST", headers: { Cookie: authenticatedCookie } },
     );
     expect(await markAllRead.json()).toMatchObject({ ok: true, unreadCount: 0 });
+
+    const deleteOneNotification = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/notifications/${firstNotificationId}`,
+      { method: "DELETE", headers: { Cookie: authenticatedCookie } },
+    );
+    expect(deleteOneNotification.status).toBe(200);
+    const afterDeleteOne = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/notifications?limit=20",
+      { headers: { Cookie: authenticatedCookie } },
+    );
+    const afterDeleteOneBody = await afterDeleteOne.json() as { notifications: Array<{ id: string }> };
+    expect(afterDeleteOneBody.notifications.some((item) => item.id === firstNotificationId)).toBe(false);
+
+    const deleteAllNotifications = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/notifications",
+      { method: "DELETE", headers: { Cookie: authenticatedCookie } },
+    );
+    expect(await deleteAllNotifications.json()).toMatchObject({ ok: true, unreadCount: 0 });
+    const afterDeleteAll = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/notifications?limit=20",
+      { headers: { Cookie: authenticatedCookie } },
+    );
+    expect(await afterDeleteAll.json()).toMatchObject({ notifications: [], unreadCount: 0 });
 
     await env.DB.prepare("DELETE FROM system_admins WHERE user_id = (SELECT id FROM users LIMIT 1)").run();
     const forbiddenAdmin = await exports.default.fetch(
