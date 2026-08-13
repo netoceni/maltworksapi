@@ -23,7 +23,8 @@
     }
   ],
   "r2_buckets": [
-    { "binding": "FIRMWARE", "bucket_name": "maltworks-firmware" }
+    { "binding": "FIRMWARE", "bucket_name": "maltworks-firmware" },
+    { "binding": "BATCH_FILES", "bucket_name": "maltworks-batch-files" }
   ],
   "durable_objects": {
     "bindings": [

@@ -125,7 +125,7 @@ export function preflightResponse(request: Request, env: Env): Response {
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Maltworks-Device-ID, X-Maltworks-Firmware, X-Firmware-Product, X-Firmware-Version, X-Firmware-Board-Family, X-Firmware-Phase",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Maltworks-Device-ID, X-Maltworks-Firmware, X-Firmware-Product, X-Firmware-Version, X-Firmware-Board-Family, X-Firmware-Phase, X-File-Name",
       "Access-Control-Max-Age": "86400",
       Vary: "Origin",
     },

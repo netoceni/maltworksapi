@@ -70,11 +70,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.12.0", () => {
+describe("Maltworks Cloud API 5.13.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.12.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.13.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -614,7 +614,12 @@ describe("Maltworks Cloud API 5.12.0", () => {
         headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
         body: JSON.stringify({
           name: "APA lote 0002",
+          batchCode: "APA-0002",
+          recipeId: createdRecipe.recipe.id,
+          equipmentName: "Fermentador inox 30 L",
           originalGravity: 1.052,
+          plannedFinalGravity: 1.012,
+          plannedVolumeLiters: 20,
           startedAt: fermentationStartedAt,
         }),
       },
@@ -714,6 +719,113 @@ describe("Maltworks Cloud API 5.12.0", () => {
     expect(await finishFermentation.json()).toMatchObject({
       fermentation: { active: false, originalGravity: 1.052 },
     });
+
+    const batchId = startedFermentation.fermentation.id;
+    const updateBatch = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/batches/${batchId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({
+          finalGravity: 1.010,
+          actualVolumeLiters: 19.2,
+          sensoryScore: 91,
+          sensoryNotes: "Citrica, limpa e equilibrada.",
+          summaryNotes: "Fermentacao sem desvios.",
+        }),
+      },
+    );
+    expect(updateBatch.status).toBe(200);
+
+    const addIngredient = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/batches/${batchId}/ingredients`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({
+          name: "Malte Pale Ale",
+          category: "malte",
+          plannedQuantity: 5,
+          actualQuantity: 5.1,
+          unit: "kg",
+          plannedCost: 70,
+          actualCost: 72.5,
+        }),
+      },
+    );
+    expect(addIngredient.status).toBe(201);
+
+    const addJournal = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/batches/${batchId}/journal`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({ kind: "ocorrencia", title: "Dry hopping", details: "Adicao realizada sem oxidacao." }),
+      },
+    );
+    expect(addJournal.status).toBe(201);
+
+    const attachmentBytes = new TextEncoder().encode("foto de bancada simulada");
+    const uploadAttachment = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/batches/${batchId}/attachments`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          "Content-Length": String(attachmentBytes.byteLength),
+          "X-File-Name": encodeURIComponent("anotacoes.txt"),
+          Cookie: cookie ?? "",
+        },
+        body: attachmentBytes,
+      },
+    );
+    expect(uploadAttachment.status).toBe(201);
+    const uploadedBatch = await uploadAttachment.json() as { batch: { attachments: Array<{ id: string }> } };
+    const attachmentId = uploadedBatch.batch.attachments[0]?.id ?? "";
+    expect(attachmentId).toMatch(/^bga_[0-9a-f]{32}$/);
+
+    const downloadAttachment = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/batches/${batchId}/attachments/${attachmentId}`,
+      { headers: { Cookie: cookie ?? "" } },
+    );
+    expect(downloadAttachment.status).toBe(200);
+    expect(await downloadAttachment.text()).toBe("foto de bancada simulada");
+
+    const batches = await exports.default.fetch("https://api.maltworks.com.br/v1/batches", {
+      headers: { Cookie: cookie ?? "" },
+    });
+    expect(batches.status).toBe(200);
+    expect(await batches.json()).toMatchObject({
+      batches: [{
+        id: batchId,
+        batchCode: "APA-0002",
+        equipmentName: "Fermentador inox 30 L",
+        finalGravity: 1.010,
+        sensoryScore: 91,
+        metrics: { abv: 5.51, attenuation: 80.8, actualCost: 72.5 },
+      }],
+    });
+
+    const batchDetail = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/batches/${batchId}`,
+      { headers: { Cookie: cookie ?? "" } },
+    );
+    expect(batchDetail.status).toBe(200);
+    expect(await batchDetail.json()).toMatchObject({
+      batch: {
+        ingredients: [{ name: "Malte Pale Ale", actualCost: 72.5 }],
+        journal: [{ kind: "ocorrencia", title: "Dry hopping" }],
+        attachments: [{ fileName: "anotacoes.txt" }],
+        recipeSnapshot: { id: createdRecipe.recipe.id, version: 1 },
+      },
+    });
+
+    const comparison = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/batches/compare?recipeId=${createdRecipe.recipe.id}`,
+      { headers: { Cookie: cookie ?? "" } },
+    );
+    expect(comparison.status).toBe(200);
+    expect(await comparison.json()).toMatchObject({ recipeId: createdRecipe.recipe.id, batches: [{ id: batchId }] });
 
     const readingAfterFinish = await exports.default.fetch(
       `https://api.maltworks.com.br/v1/devices/${deviceId}/fermentation/readings`,

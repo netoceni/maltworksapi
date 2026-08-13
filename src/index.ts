@@ -47,10 +47,23 @@ import {
   deviceOtaEvent,
   deviceOtaFirmware,
 } from "./ota";
+import {
+  addBatchIngredient,
+  addBatchJournalEntry,
+  compareBatches,
+  deleteBatchAttachment,
+  deleteBatchIngredient,
+  deleteBatchJournalEntry,
+  downloadBatchAttachment,
+  getBatch,
+  listBatches,
+  updateBatch,
+  uploadBatchAttachment,
+} from "./batches";
 
 export { RealtimeHub };
 
-const API_VERSION = "5.12.0";
+const API_VERSION = "5.13.0";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -170,6 +183,12 @@ async function route(
   if (request.method === "POST" && path === "/v1/recipes") {
     return createRecipe(request, env, requestId);
   }
+  if (request.method === "GET" && path === "/v1/batches") {
+    return listBatches(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/batches/compare") {
+    return compareBatches(request, env, requestId);
+  }
   if (request.method === "GET" && path === "/v1/notifications") {
     return listNotifications(request, env, requestId);
   }
@@ -201,6 +220,41 @@ async function route(
   }
   if (request.method === "DELETE" && recipeMatch?.[1]) {
     return deleteRecipe(request, env, requestId, recipeMatch[1]);
+  }
+
+  const batchMatch = /^\/v1\/batches\/(fer_[0-9a-f]{32})$/u.exec(path);
+  if (request.method === "GET" && batchMatch?.[1]) {
+    return getBatch(request, env, requestId, batchMatch[1]);
+  }
+  if (request.method === "PUT" && batchMatch?.[1]) {
+    return updateBatch(request, env, requestId, batchMatch[1]);
+  }
+  const batchIngredientsMatch = /^\/v1\/batches\/(fer_[0-9a-f]{32})\/ingredients$/u.exec(path);
+  if (request.method === "POST" && batchIngredientsMatch?.[1]) {
+    return addBatchIngredient(request, env, requestId, batchIngredientsMatch[1]);
+  }
+  const batchIngredientMatch = /^\/v1\/batches\/(fer_[0-9a-f]{32})\/ingredients\/(bgi_[0-9a-f]{32})$/u.exec(path);
+  if (request.method === "DELETE" && batchIngredientMatch?.[1] && batchIngredientMatch[2]) {
+    return deleteBatchIngredient(request, env, requestId, batchIngredientMatch[1], batchIngredientMatch[2]);
+  }
+  const batchJournalMatch = /^\/v1\/batches\/(fer_[0-9a-f]{32})\/journal$/u.exec(path);
+  if (request.method === "POST" && batchJournalMatch?.[1]) {
+    return addBatchJournalEntry(request, env, requestId, batchJournalMatch[1]);
+  }
+  const batchJournalEntryMatch = /^\/v1\/batches\/(fer_[0-9a-f]{32})\/journal\/(bje_[0-9a-f]{32})$/u.exec(path);
+  if (request.method === "DELETE" && batchJournalEntryMatch?.[1] && batchJournalEntryMatch[2]) {
+    return deleteBatchJournalEntry(request, env, requestId, batchJournalEntryMatch[1], batchJournalEntryMatch[2]);
+  }
+  const batchAttachmentsMatch = /^\/v1\/batches\/(fer_[0-9a-f]{32})\/attachments$/u.exec(path);
+  if (request.method === "POST" && batchAttachmentsMatch?.[1]) {
+    return uploadBatchAttachment(request, env, requestId, batchAttachmentsMatch[1]);
+  }
+  const batchAttachmentMatch = /^\/v1\/batches\/(fer_[0-9a-f]{32})\/attachments\/(bga_[0-9a-f]{32})$/u.exec(path);
+  if (request.method === "GET" && batchAttachmentMatch?.[1] && batchAttachmentMatch[2]) {
+    return downloadBatchAttachment(request, env, requestId, batchAttachmentMatch[1], batchAttachmentMatch[2]);
+  }
+  if (request.method === "DELETE" && batchAttachmentMatch?.[1] && batchAttachmentMatch[2]) {
+    return deleteBatchAttachment(request, env, requestId, batchAttachmentMatch[1], batchAttachmentMatch[2]);
   }
 
   const latestMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/latest$/u.exec(path);

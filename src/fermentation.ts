@@ -1,5 +1,6 @@
 import { requireSession, selectOrganization } from "./auth";
 import { jsonResponse, readJson } from "./http";
+import { recipeById } from "./recipes";
 import { ApiError, type SessionContext } from "./types";
 
 const SESSION_ID_PATTERN = /^fer_[0-9a-f]{32}$/u;
@@ -8,6 +9,7 @@ const MINIMUM_GRAVITY = 0.990;
 const MAXIMUM_GRAVITY = 1.200;
 const MAXIMUM_AGE_SECONDS = 5 * 365 * 24 * 60 * 60;
 const MAXIMUM_READINGS = 500;
+const RECIPE_ID_PATTERN = /^rcp_[0-9a-f]{32}$/u;
 
 interface FermentationRow {
   id: string;
@@ -69,6 +71,19 @@ export async function startFermentation(
 
   const name = textValue(body.name, "name", 2, 80);
   const originalGravity = gravityValue(body.originalGravity, "originalGravity");
+  const batchCode = body.batchCode === undefined ? "" : textValue(body.batchCode, "batchCode", 0, 40, true);
+  const equipmentName = body.equipmentName === undefined ? "" : textValue(body.equipmentName, "equipmentName", 0, 120, true);
+  const plannedFinalGravity = nullableGravityValue(body.plannedFinalGravity);
+  const plannedVolumeLiters = nullablePositiveValue(body.plannedVolumeLiters, "plannedVolumeLiters");
+  const recipeId = body.recipeId === undefined || body.recipeId === null || body.recipeId === ""
+    ? null
+    : textValue(body.recipeId, "recipeId", 1, 64);
+  if (recipeId && !RECIPE_ID_PATTERN.test(recipeId)) {
+    throw new ApiError(400, "INVALID_RECIPE_ID", "Selecione uma receita valida.");
+  }
+  const recipe = recipeId ? await recipeById(env.DB, recipeId, organizationId) : null;
+  if (recipeId && !recipe) throw new ApiError(404, "RECIPE_NOT_FOUND", "Receita nao encontrada.");
+  const recipeSnapshot = recipe ? JSON.stringify(recipe) : "{}";
   const now = Math.floor(Date.now() / 1000);
   const startedAt = timestampValue(body.startedAt, "startedAt", now);
   const active = await activeSession(env.DB, deviceId, organizationId);
@@ -82,8 +97,10 @@ export async function startFermentation(
       env.DB.prepare(
         `INSERT INTO fermentation_sessions (
            id, organization_id, device_id, created_by_user_id, name,
-           original_gravity, started_at, finished_at, created_at, updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?8)`,
+           original_gravity, started_at, finished_at, created_at, updated_at,
+           batch_code, recipe_id, recipe_snapshot_json, equipment_name,
+           planned_final_gravity, planned_volume_liters
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`,
       ).bind(
         fermentationId,
         organizationId,
@@ -93,6 +110,12 @@ export async function startFermentation(
         originalGravity,
         startedAt,
         now,
+        batchCode,
+        recipeId,
+        recipeSnapshot,
+        equipmentName,
+        plannedFinalGravity,
+        plannedVolumeLiters,
       ),
       auditStatement(
         env.DB,
@@ -100,12 +123,15 @@ export async function startFermentation(
         session.userId,
         deviceId,
         "fermentation.started",
-        { fermentationId, name, originalGravity, startedAt },
+        { fermentationId, name, originalGravity, startedAt, batchCode, recipeId },
         now,
       ),
     ]);
   } catch (error) {
     if (error instanceof Error && error.message.toLowerCase().includes("unique")) {
+      if (error.message.toLowerCase().includes("batch_code")) {
+        throw new ApiError(409, "BATCH_CODE_IN_USE", "Ja existe um lote com este codigo.");
+      }
       throw new ApiError(409, "FERMENTATION_ALREADY_ACTIVE", "Ja existe um acompanhamento ativo neste controlador.");
     }
     throw error;
@@ -234,12 +260,22 @@ export async function finishFermentation(
   }
   const now = Math.floor(Date.now() / 1000);
   const finishedAt = Math.max(now, active.startedAt);
+  const finalGravity = nullableGravityValue(body.finalGravity);
+  const actualVolumeLiters = nullablePositiveValue(body.actualVolumeLiters, "actualVolumeLiters");
+  const sensoryScore = nullableIntegerValue(body.sensoryScore, "sensoryScore", 0, 100);
+  const sensoryNotes = body.sensoryNotes === undefined ? "" : textValue(body.sensoryNotes, "sensoryNotes", 0, 4000, true);
+  const summaryNotes = body.summaryNotes === undefined ? "" : textValue(body.summaryNotes, "summaryNotes", 0, 4000, true);
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE fermentation_sessions
-          SET finished_at = ?2, updated_at = ?2
+          SET finished_at = ?2, updated_at = ?2,
+              final_gravity = COALESCE(?3, final_gravity),
+              actual_volume_liters = COALESCE(?4, actual_volume_liters),
+              sensory_score = COALESCE(?5, sensory_score),
+              sensory_notes = CASE WHEN ?6 = '' THEN sensory_notes ELSE ?6 END,
+              summary_notes = CASE WHEN ?7 = '' THEN summary_notes ELSE ?7 END
         WHERE id = ?1 AND finished_at IS NULL`,
-    ).bind(active.id, finishedAt),
+    ).bind(active.id, finishedAt, finalGravity, actualVolumeLiters, sensoryScore, sensoryNotes, summaryNotes),
     auditStatement(
       env.DB,
       organizationId,
@@ -316,6 +352,27 @@ function gravityValue(value: unknown, field: string): number {
     throw new ApiError(400, "INVALID_GRAVITY", "Use densidade entre 0,990 e 1,200 com tres casas decimais.");
   }
   return rounded;
+}
+
+function nullableGravityValue(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  return gravityValue(value, "gravity");
+}
+
+function nullablePositiveValue(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 100_000) {
+    throw new ApiError(400, "INVALID_FIELD", `Campo invalido: ${field}.`);
+  }
+  return Math.round(value * 1000) / 1000;
+}
+
+function nullableIntegerValue(value: unknown, field: string, minimum: number, maximum: number): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new ApiError(400, "INVALID_FIELD", `Campo invalido: ${field}.`);
+  }
+  return value;
 }
 
 function timestampValue(value: unknown, field: string, now: number): number {
