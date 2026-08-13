@@ -1,6 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import "../src/index";
+import { scanOfflineDevices } from "../src/notifications";
 
 const deviceId = "MW-A1B2C3D4E5F6";
 const token = "0123456789abcdef".repeat(4);
@@ -69,11 +70,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.8.0", () => {
+describe("Maltworks Cloud API 5.9.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.8.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.9.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -971,6 +972,110 @@ describe("Maltworks Cloud API 5.8.0", () => {
       ok: true,
       overview: { users: 1, organizations: 1, devices: 1 },
     });
+
+    const authenticatedCookie = newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "";
+    const notificationBaseline = telemetry(102);
+    expect((await sendTelemetry(notificationBaseline, replacementToken)).status).toBe(200);
+
+    const incidentTelemetry = telemetry(103);
+    incidentTelemetry.alarms = {
+      ...(incidentTelemetry.alarms as Record<string, unknown>),
+      active: true,
+      unacknowledged: true,
+      count: 2,
+      summary: "Falha de sensor e temperatura alta",
+    };
+    (incidentTelemetry.temperatures as Record<string, Record<string, unknown>>).thermalWell = {
+      connected: false,
+      value: null,
+      raw: null,
+      offset: 0,
+    };
+    incidentTelemetry.profile = {
+      active: true,
+      paused: false,
+      name: "APA Cloud",
+      state: "EXECUTANDO",
+      stage: 0,
+      stageCount: 3,
+      remainingSeconds: 3_600,
+    };
+    expect((await sendTelemetry(incidentTelemetry, replacementToken)).status).toBe(200);
+
+    const recoveredTelemetry = telemetry(104);
+    recoveredTelemetry.profile = {
+      active: true,
+      paused: false,
+      name: "APA Cloud",
+      state: "EXECUTANDO",
+      stage: 1,
+      stageCount: 3,
+      remainingSeconds: 1_800,
+    };
+    expect((await sendTelemetry(recoveredTelemetry, replacementToken)).status).toBe(200);
+
+    await env.DB.prepare("UPDATE devices SET last_seen_at = 0 WHERE id = ?1").bind(deviceId).run();
+    await scanOfflineDevices(env);
+    expect((await sendTelemetry(telemetry(105), replacementToken)).status).toBe(200);
+
+    const notificationList = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/notifications?limit=20",
+      { headers: { Cookie: authenticatedCookie } },
+    );
+    expect(notificationList.status).toBe(200);
+    const notificationBody = await notificationList.json() as {
+      notifications: Array<{ id: string; type: string; isRead: boolean }>;
+      unreadCount: number;
+    };
+    expect(notificationBody.unreadCount).toBeGreaterThanOrEqual(7);
+    expect(notificationBody.notifications.map((item) => item.type)).toEqual(expect.arrayContaining([
+      "alarm_activated",
+      "alarm_resolved",
+      "sensor_disconnected",
+      "sensor_reconnected",
+      "profile_stage_changed",
+      "device_offline",
+      "device_online",
+    ]));
+
+    const defaultPreferences = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/notifications/preferences",
+      { headers: { Cookie: authenticatedCookie } },
+    );
+    expect(await defaultPreferences.json()).toMatchObject({
+      preferences: { emailEnabled: false, alarmEvents: true, deviceEvents: true },
+    });
+    const updatePreferences = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/notifications/preferences",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: authenticatedCookie },
+        body: JSON.stringify({
+          emailEnabled: true,
+          deviceEvents: true,
+          sensorEvents: true,
+          alarmEvents: true,
+          profileEvents: false,
+          commandEvents: true,
+        }),
+      },
+    );
+    expect(updatePreferences.status).toBe(200);
+    expect(await updatePreferences.json()).toMatchObject({
+      preferences: { emailEnabled: true, profileEvents: false },
+    });
+
+    const firstNotificationId = notificationBody.notifications[0]?.id ?? "";
+    const markRead = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/notifications/${firstNotificationId}/read`,
+      { method: "POST", headers: { Cookie: authenticatedCookie } },
+    );
+    expect(markRead.status).toBe(200);
+    const markAllRead = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/notifications/read-all",
+      { method: "POST", headers: { Cookie: authenticatedCookie } },
+    );
+    expect(await markAllRead.json()).toMatchObject({ ok: true, unreadCount: 0 });
 
     await env.DB.prepare("DELETE FROM system_admins WHERE user_id = (SELECT id FROM users LIMIT 1)").run();
     const forbiddenAdmin = await exports.default.fetch(

@@ -1,4 +1,12 @@
-# Maltworks Cloud API 5.8.0
+# Maltworks Cloud API 5.9.0
+
+## Novidades 5.9.0
+
+- central de notificações por organização, com leitura independente por usuário;
+- preferências opt-in para alertas transacionais por e-mail;
+- eventos automáticos de alarmes, sensores, etapas, comandos e conectividade;
+- verificação periódica de controladores offline e aviso de recuperação;
+- deduplicação de eventos e registro do estado de entrega dos e-mails.
 
 ## Novidades 5.8.0
 
@@ -95,6 +103,10 @@ Primeiro servidor cloud do Maltworks Controller, feito para Cloudflare Workers +
 | GET | `/v1/devices` | Lista controladores da organizacao |
 | GET | `/v1/devices/:id/latest` | Estado mais recente |
 | GET | `/v1/devices/:id/telemetry` | Historico paginado |
+| GET | `/v1/notifications` | Lista notificações e total não lido |
+| POST | `/v1/notifications/:id/read` | Marca uma notificação como lida |
+| POST | `/v1/notifications/read-all` | Marca todas como lidas |
+| GET/PUT | `/v1/notifications/preferences` | Consulta ou altera preferências |
 | POST | `/v1/devices/:id/commands/setpoint` | Solicita novo setpoint remoto |
 | GET | `/v1/recipes` | Lista receitas da organizacao |
 | POST | `/v1/recipes` | Cria uma receita |

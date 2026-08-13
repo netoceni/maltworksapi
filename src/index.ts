@@ -26,23 +26,39 @@ import {
 import { ApiError } from "./types";
 import { createSalesLead } from "./sales";
 import { adminListUsers, adminMe, adminOverview } from "./admin";
+import {
+  getNotificationPreferences,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  scanOfflineDevices,
+  updateNotificationPreferences,
+} from "./notifications";
 
-const API_VERSION = "5.8.0";
+const API_VERSION = "5.9.0";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const requestId = crypto.randomUUID();
     try {
       if (request.method === "OPTIONS") return preflightResponse(request, env);
-      const response = await route(request, env, requestId);
+      const response = await route(request, env, requestId, ctx);
       return addCors(response, request, env);
     } catch (error) {
       return addCors(errorResponse(error, requestId), request, env);
     }
   },
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(scanOfflineDevices(env));
+  },
 } satisfies ExportedHandler<Env>;
 
-async function route(request: Request, env: Env, requestId: string): Promise<Response> {
+async function route(
+  request: Request,
+  env: Env,
+  requestId: string,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/u, "") || "/";
 
@@ -62,7 +78,7 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
   }
 
   if (request.method === "POST" && path === "/v1/telemetry") {
-    return ingestTelemetry(request, env, requestId);
+    return ingestTelemetry(request, env, requestId, ctx);
   }
   if (request.method === "POST" && path === "/v1/sales/leads") {
     return createSalesLead(request, env, requestId);
@@ -105,6 +121,23 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
   }
   if (request.method === "POST" && path === "/v1/recipes") {
     return createRecipe(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/notifications") {
+    return listNotifications(request, env, requestId);
+  }
+  if (request.method === "POST" && path === "/v1/notifications/read-all") {
+    return markAllNotificationsRead(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/notifications/preferences") {
+    return getNotificationPreferences(request, env, requestId);
+  }
+  if (request.method === "PUT" && path === "/v1/notifications/preferences") {
+    return updateNotificationPreferences(request, env, requestId);
+  }
+
+  const notificationReadMatch = /^\/v1\/notifications\/(ntf_[0-9a-f]{32})\/read$/u.exec(path);
+  if (request.method === "POST" && notificationReadMatch?.[1]) {
+    return markNotificationRead(request, env, requestId, notificationReadMatch[1]);
   }
 
   const recipeMatch = /^\/v1\/recipes\/(rcp_[0-9a-f]{32})$/u.exec(path);

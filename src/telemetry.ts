@@ -1,12 +1,22 @@
 import { constantTimeEqual, isHex, sha256Hex } from "./crypto";
 import { nextCommandForDevice, processCommandResult } from "./commands";
 import { getBearerToken, jsonResponse, readJson } from "./http";
+import {
+  deliverNotificationEmails,
+  previousDeviceState,
+  recordTelemetryNotifications,
+} from "./notifications";
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
 const BOOT_ID_PATTERN = /^[0-9A-F]{8}$/;
 
-export async function ingestTelemetry(request: Request, env: Env, requestId: string): Promise<Response> {
+export async function ingestTelemetry(
+  request: Request,
+  env: Env,
+  requestId: string,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const headerDeviceId = (request.headers.get("X-Maltworks-Device-ID") ?? "").toUpperCase();
   if (!DEVICE_ID_PATTERN.test(headerDeviceId)) {
     throw new ApiError(400, "INVALID_DEVICE_ID", "Device ID ausente ou invalido.");
@@ -81,6 +91,7 @@ export async function ingestTelemetry(request: Request, env: Env, requestId: str
     ).bind(payload.deviceId, pairingCodeHash).run();
   }
 
+  const previous = await previousDeviceState(env.DB, payload.deviceId);
   const payloadJson = JSON.stringify(payload);
   const statements = [
     env.DB.prepare(
@@ -191,6 +202,10 @@ export async function ingestTelemetry(request: Request, env: Env, requestId: str
   await env.DB.batch(statements);
   if (payload.commandResult) {
     await processCommandResult(env.DB, payload.deviceId, payload.commandResult, now);
+  }
+  const notificationIds = await recordTelemetryNotifications(env, payload, previous, now);
+  if (notificationIds.length) {
+    ctx.waitUntil(deliverNotificationEmails(env, notificationIds));
   }
   const command = await nextCommandForDevice(env.DB, payload.deviceId, now);
   return jsonResponse(
