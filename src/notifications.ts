@@ -162,7 +162,7 @@ export async function recordTelemetryNotifications(
   return created;
 }
 
-export async function scanOfflineDevices(env: Env): Promise<void> {
+export async function scanOfflineDevices(env: Env): Promise<string[]> {
   const now = Math.floor(Date.now() / 1_000);
   const rows = await env.DB.prepare(
     `SELECT d.id, d.organization_id AS organizationId, d.name, d.last_seen_at AS lastSeenAt,
@@ -181,10 +181,16 @@ export async function scanOfflineDevices(env: Env): Promise<void> {
   }>();
 
   const created: string[] = [];
+  const changedOrganizations = new Set<string>();
   for (const device of rows.results) {
-    if (device.offlineActive !== 1) created.push(...await recordOfflineDevice(env, device.id, now));
+    if (device.offlineActive === 1) continue;
+
+    const notificationIds = await recordOfflineDevice(env, device.id, now);
+    created.push(...notificationIds);
+    if (notificationIds.length) changedOrganizations.add(device.organizationId);
   }
   await deliverNotificationEmails(env, created);
+  return [...changedOrganizations];
 }
 
 export async function recordOfflineDevice(

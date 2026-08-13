@@ -70,11 +70,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.13.1", () => {
+describe("Maltworks Cloud API 5.13.2", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.13.1" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.13.2" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -1196,7 +1196,7 @@ describe("Maltworks Cloud API 5.13.1", () => {
     const offlineCheckNow = Math.floor(Date.now() / 1_000);
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
       .bind(offlineCheckNow - 20, deviceId).run();
-    await scanOfflineDevices(env);
+    expect(await scanOfflineDevices(env)).toEqual([]);
     const prematureOfflineNotification = await env.DB.prepare(
       "SELECT COUNT(*) AS count FROM notifications WHERE device_id = ?1 AND type = 'device_offline'",
     ).bind(deviceId).first<{ count: number }>();
@@ -1204,7 +1204,7 @@ describe("Maltworks Cloud API 5.13.1", () => {
 
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
       .bind(offlineCheckNow - 40, deviceId).run();
-    await scanOfflineDevices(env);
+    expect(await scanOfflineDevices(env)).toHaveLength(1);
     expect((await sendTelemetry(telemetry(105), replacementToken)).status).toBe(200);
 
     const notificationList = await exports.default.fetch(

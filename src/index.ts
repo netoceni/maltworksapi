@@ -36,7 +36,12 @@ import {
   scanOfflineDevices,
   updateNotificationPreferences,
 } from "./notifications";
-import { openBrowserRealtime, openDeviceRealtime, RealtimeHub } from "./realtime";
+import {
+  openBrowserRealtime,
+  openDeviceRealtime,
+  publishNotificationsRealtime,
+  RealtimeHub,
+} from "./realtime";
 import {
   adminCreateCampaign,
   adminListCampaigns,
@@ -64,7 +69,7 @@ import {
 
 export { RealtimeHub };
 
-const API_VERSION = "5.13.1";
+const API_VERSION = "5.13.2";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -78,7 +83,11 @@ export default {
     }
   },
   scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
-    ctx.waitUntil(scanOfflineDevices(env));
+    ctx.waitUntil((async () => {
+      const organizations = await scanOfflineDevices(env);
+      await Promise.all(organizations.map((organizationId) =>
+        publishNotificationsRealtime(env, organizationId)));
+    })());
   },
 } satisfies ExportedHandler<Env>;
 
