@@ -33,11 +33,13 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  scanOfflineDevices,
   updateNotificationPreferences,
 } from "./notifications";
+import { openBrowserRealtime, openDeviceRealtime, RealtimeHub } from "./realtime";
 
-const API_VERSION = "5.10.0";
+export { RealtimeHub };
+
+const API_VERSION = "5.11.0";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -49,9 +51,6 @@ export default {
     } catch (error) {
       return addCors(errorResponse(error, requestId), request, env);
     }
-  },
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(scanOfflineDevices(env));
   },
 } satisfies ExportedHandler<Env>;
 
@@ -81,6 +80,12 @@ async function route(
 
   if (request.method === "POST" && path === "/v1/telemetry") {
     return ingestTelemetry(request, env, requestId, ctx);
+  }
+  if (request.method === "GET" && path === "/v1/realtime") {
+    return openBrowserRealtime(request, env);
+  }
+  if (request.method === "GET" && path === "/v1/device/realtime") {
+    return openDeviceRealtime(request, env);
   }
   if (request.method === "POST" && path === "/v1/sales/leads") {
     return createSalesLead(request, env, requestId);
@@ -193,19 +198,19 @@ async function route(
   }
   const setpointCommandMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/commands\/setpoint$/u.exec(path);
   if (request.method === "POST" && setpointCommandMatch?.[1]) {
-    return createSetpointCommand(request, env, requestId, setpointCommandMatch[1]);
+    return createSetpointCommand(request, env, requestId, setpointCommandMatch[1], ctx);
   }
   const profileCommandMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/commands\/profile$/u.exec(path);
   if (request.method === "POST" && profileCommandMatch?.[1]) {
-    return createProfileCommand(request, env, requestId, profileCommandMatch[1]);
+    return createProfileCommand(request, env, requestId, profileCommandMatch[1], ctx);
   }
   const configurationCommandMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/commands\/configuration$/u.exec(path);
   if (request.method === "POST" && configurationCommandMatch?.[1]) {
-    return createConfigurationCommand(request, env, requestId, configurationCommandMatch[1]);
+    return createConfigurationCommand(request, env, requestId, configurationCommandMatch[1], ctx);
   }
   const alarmCommandMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/commands\/alarms$/u.exec(path);
   if (request.method === "POST" && alarmCommandMatch?.[1]) {
-    return createAlarmCommand(request, env, requestId, alarmCommandMatch[1]);
+    return createAlarmCommand(request, env, requestId, alarmCommandMatch[1], ctx);
   }
 
   throw new ApiError(404, "ROUTE_NOT_FOUND", "Rota nao encontrada.");

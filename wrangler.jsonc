@@ -2,13 +2,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maltworks-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-08-03",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "observability": {
     "enabled": true
-  },
-  "triggers": {
-    "crons": ["* * * * *"]
   },
   "vars": {
     "APP_ORIGIN": "https://app.maltworks.com.br",
@@ -23,6 +21,14 @@
       "name": "EMAIL",
       "allowed_destination_addresses": ["neto__ceni@hotmail.com"]
     }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "REALTIME", "class_name": "RealtimeHub" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1-realtime", "new_sqlite_classes": ["RealtimeHub"] }
   ],
   "d1_databases": [
     {

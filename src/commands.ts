@@ -7,7 +7,7 @@ const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
 const RECIPE_ID_PATTERN = /^rcp_[0-9a-f]{32}$/;
 const COMMAND_ID_PATTERN = /^cmd_[0-9a-f]{32}$/;
 const COMMAND_TTL_SECONDS = 120;
-const ONLINE_WINDOW_SECONDS = 65;
+const ONLINE_WINDOW_SECONDS = 30;
 
 type CommandStatus = "pending" | "delivered" | "applied" | "rejected" | "expired";
 type CommandType =
@@ -65,6 +65,7 @@ export async function createSetpointCommand(
   env: Env,
   requestId: string,
   deviceId: string,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   const raw = objectValue(await readJson(request));
   const context = await deviceContext(request, env, deviceId, raw.organizationId);
@@ -77,11 +78,12 @@ export async function createSetpointCommand(
   }
   const setpoint = normalizedSetpoint(raw.setpoint);
   return queueCommand(
-    env.DB,
+    env,
     context,
     "set_setpoint",
     { setpoint },
     requestId,
+    ctx,
   );
 }
 
@@ -90,6 +92,7 @@ export async function createProfileCommand(
   env: Env,
   requestId: string,
   deviceId: string,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   const raw = objectValue(await readJson(request));
   const context = await deviceContext(request, env, deviceId, raw.organizationId);
@@ -109,7 +112,7 @@ export async function createProfileCommand(
       .map((stage) => `${stage.targetTemperature.toFixed(1)},${stage.durationSeconds}`)
       .join(";");
     return queueCommand(
-      env.DB,
+      env,
       context,
       "start_profile",
       {
@@ -120,6 +123,7 @@ export async function createProfileCommand(
         stagePlan,
       },
       requestId,
+      ctx,
     );
   }
 
@@ -127,21 +131,21 @@ export async function createProfileCommand(
     if (!context.profile.active || context.profile.paused) {
       throw new ApiError(409, "PROFILE_NOT_RUNNING", "O perfil nao esta em execucao.");
     }
-    return queueCommand(env.DB, context, "pause_profile", {}, requestId);
+    return queueCommand(env, context, "pause_profile", {}, requestId, ctx);
   }
 
   if (action === "resume") {
     if (!context.profile.active || !context.profile.paused) {
       throw new ApiError(409, "PROFILE_NOT_PAUSED", "O perfil nao esta pausado.");
     }
-    return queueCommand(env.DB, context, "resume_profile", {}, requestId);
+    return queueCommand(env, context, "resume_profile", {}, requestId, ctx);
   }
 
   if (action === "stop") {
     if (!context.profile.active) {
       throw new ApiError(409, "PROFILE_NOT_ACTIVE", "Nao existe perfil ativo para interromper.");
     }
-    return queueCommand(env.DB, context, "stop_profile", {}, requestId);
+    return queueCommand(env, context, "stop_profile", {}, requestId, ctx);
   }
 
   throw new ApiError(400, "INVALID_PROFILE_ACTION", "Acao de perfil invalida.");
@@ -152,6 +156,7 @@ export async function createConfigurationCommand(
   env: Env,
   requestId: string,
   deviceId: string,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   const raw = objectValue(await readJson(request));
   const context = await deviceContext(request, env, deviceId, raw.organizationId);
@@ -169,11 +174,12 @@ export async function createConfigurationCommand(
   const configuration = normalizedConfiguration(raw, (current?.version ?? 0) + 1);
 
   return queueCommand(
-    env.DB,
+    env,
     context,
     "set_configuration",
     { ...configuration },
     requestId,
+    ctx,
     (commandId) => [
       env.DB.prepare(
         `INSERT INTO device_configurations (
@@ -235,6 +241,7 @@ export async function createAlarmCommand(
   env: Env,
   requestId: string,
   deviceId: string,
+  ctx: ExecutionContext,
 ): Promise<Response> {
   const raw = objectValue(await readJson(request));
   const context = await deviceContext(request, env, deviceId, raw.organizationId);
@@ -242,7 +249,7 @@ export async function createAlarmCommand(
   if (action !== "acknowledge") {
     throw new ApiError(400, "INVALID_ALARM_ACTION", "Acao de alarme invalida.");
   }
-  return queueCommand(env.DB, context, "acknowledge_alarms", {}, requestId);
+  return queueCommand(env, context, "acknowledge_alarms", {}, requestId, ctx);
 }
 
 export async function nextCommandForDevice(
@@ -470,16 +477,18 @@ async function deviceContext(
 }
 
 async function queueCommand(
-  db: D1Database,
+  env: Env,
   context: DeviceContext,
   type: CommandType,
   payload: Record<string, unknown>,
   requestId: string,
+  ctx: ExecutionContext,
   additionalStatements: (
     commandId: string,
     expiresAt: number,
   ) => D1PreparedStatement[] = () => [],
 ): Promise<Response> {
+  const db = env.DB;
   await expireActiveCommands(db, context.deviceId, context.now);
   const active = await db.prepare(
     `SELECT id FROM device_commands
@@ -536,6 +545,8 @@ async function queueCommand(
     }
     throw error;
   }
+
+  ctx.waitUntil(env.REALTIME.getByName(context.organizationId).commandAvailable(context.deviceId));
 
   return jsonResponse(
     {

@@ -3,7 +3,7 @@ import { randomId } from "./crypto";
 import { jsonResponse, readJson } from "./http";
 import { ApiError, type TelemetryPayload } from "./types";
 
-const OFFLINE_AFTER_SECONDS = 120;
+export const OFFLINE_AFTER_SECONDS = 30;
 const NOTIFICATION_ID_PATTERN = /^ntf_[0-9a-f]{32}$/u;
 const CATEGORIES = ["device", "sensor", "alarm", "profile", "command"] as const;
 
@@ -182,22 +182,46 @@ export async function scanOfflineDevices(env: Env): Promise<void> {
 
   const created: string[] = [];
   for (const device of rows.results) {
-    if (device.offlineActive === 1) continue;
-    const eventKey = `${device.id}:offline:${device.lastSeenAt}`;
-    await setState(env.DB, device.id, "offline", true, now, eventKey);
-    created.push(...await createOne(env.DB, {
-      organizationId: device.organizationId,
-      deviceId: device.id,
-      eventKey,
-      category: "device",
-      type: "device_offline",
-      severity: "critical",
-      title: `${device.name} está offline`,
-      message: `Nenhuma telemetria recebida há mais de ${Math.floor(OFFLINE_AFTER_SECONDS / 60)} minutos.`,
-      data: { lastSeenAt: device.lastSeenAt },
-    }, now));
+    if (device.offlineActive !== 1) created.push(...await recordOfflineDevice(env, device.id, now));
   }
   await deliverNotificationEmails(env, created);
+}
+
+export async function recordOfflineDevice(
+  env: Env,
+  deviceId: string,
+  now = Math.floor(Date.now() / 1_000),
+): Promise<string[]> {
+  const device = await env.DB.prepare(
+    `SELECT d.id, d.organization_id AS organizationId, d.name,
+            d.last_seen_at AS lastSeenAt, COALESCE(ns.active, 0) AS offlineActive
+       FROM devices d
+       LEFT JOIN notification_states ns ON ns.device_id = d.id AND ns.type = 'offline'
+      WHERE d.id = ?1 AND d.organization_id IS NOT NULL AND d.status = 'active'`,
+  ).bind(deviceId).first<{
+    id: string;
+    organizationId: string;
+    name: string;
+    lastSeenAt: number;
+    offlineActive: number;
+  }>();
+  if (!device || device.offlineActive === 1 || now - device.lastSeenAt < OFFLINE_AFTER_SECONDS) {
+    return [];
+  }
+
+  const eventKey = `${device.id}:offline:${device.lastSeenAt}`;
+  await setState(env.DB, device.id, "offline", true, now, eventKey);
+  return createOne(env.DB, {
+    organizationId: device.organizationId,
+    deviceId: device.id,
+    eventKey,
+    category: "device",
+    type: "device_offline",
+    severity: "critical",
+    title: `${device.name} está offline`,
+    message: `Nenhuma comunicação recebida há mais de ${OFFLINE_AFTER_SECONDS} segundos.`,
+    data: { lastSeenAt: device.lastSeenAt },
+  }, now);
 }
 
 export async function listNotifications(request: Request, env: Env, requestId: string): Promise<Response> {

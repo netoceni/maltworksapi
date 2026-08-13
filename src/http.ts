@@ -98,6 +98,7 @@ export function clearSessionCookie(): string {
 }
 
 export function addCors(response: Response, request: Request, env: Env): Response {
+  if (response.webSocket) return response;
   const origin = request.headers.get("Origin");
   if (!origin || !allowedOrigin(origin, request, env)) return response;
 

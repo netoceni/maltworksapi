@@ -7,6 +7,7 @@ import {
   recordTelemetryNotifications,
 } from "./notifications";
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
+import { publishNotificationsRealtime, publishTelemetryRealtime } from "./realtime";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
 const BOOT_ID_PATTERN = /^[0-9A-F]{8}$/;
@@ -204,8 +205,10 @@ export async function ingestTelemetry(
     await processCommandResult(env.DB, payload.deviceId, payload.commandResult, now);
   }
   const notificationIds = await recordTelemetryNotifications(env, payload, previous, now);
+  ctx.waitUntil(publishTelemetryRealtime(env, previous?.organizationId ?? null, payload, now));
   if (notificationIds.length) {
     ctx.waitUntil(deliverNotificationEmails(env, notificationIds));
+    ctx.waitUntil(publishNotificationsRealtime(env, previous?.organizationId ?? null));
   }
   const command = await nextCommandForDevice(env.DB, payload.deviceId, now);
   return jsonResponse(

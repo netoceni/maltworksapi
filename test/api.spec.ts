@@ -70,11 +70,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.10.0", () => {
+describe("Maltworks Cloud API 5.11.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.10.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.11.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -1016,7 +1016,7 @@ describe("Maltworks Cloud API 5.10.0", () => {
 
     const offlineCheckNow = Math.floor(Date.now() / 1_000);
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
-      .bind(offlineCheckNow - 90, deviceId).run();
+      .bind(offlineCheckNow - 20, deviceId).run();
     await scanOfflineDevices(env);
     const prematureOfflineNotification = await env.DB.prepare(
       "SELECT COUNT(*) AS count FROM notifications WHERE device_id = ?1 AND type = 'device_offline'",
@@ -1024,7 +1024,7 @@ describe("Maltworks Cloud API 5.10.0", () => {
     expect(prematureOfflineNotification?.count).toBe(0);
 
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
-      .bind(offlineCheckNow - 180, deviceId).run();
+      .bind(offlineCheckNow - 40, deviceId).run();
     await scanOfflineDevices(env);
     expect((await sendTelemetry(telemetry(105), replacementToken)).status).toBe(200);
 
@@ -1048,7 +1048,7 @@ describe("Maltworks Cloud API 5.10.0", () => {
       "device_online",
     ]));
     expect(notificationBody.notifications.find((item) => item.type === "device_offline")?.message)
-      .toContain("mais de 2 minutos");
+      .toContain("mais de 30 segundos");
 
     const defaultPreferences = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/notifications/preferences",
