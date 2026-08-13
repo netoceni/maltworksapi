@@ -1,5 +1,5 @@
 BOOTSTRAP_SECRET=troque-por-um-segredo-longo-e-aleatorio
 PASSWORD_PEPPER=troque-por-outro-segredo-longo-e-independente
-RESEND_API_KEY=re_xxxxxxxxx
-SALES_EMAIL_FROM="Maltworks <contato@maltworks.com.br>"
-SALES_EMAIL_TO=vendas@maltworks.com.br
+SALES_EMAIL_FROM=notificacoes@maltworks.com.br
+SALES_EMAIL_TO=seu-email-verificado@example.com
+NOTIFICATION_EMAIL_FROM=notificacoes@maltworks.com.br

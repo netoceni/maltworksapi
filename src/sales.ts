@@ -3,7 +3,6 @@ import { jsonResponse, readJson } from "./http";
 import { ApiError } from "./types";
 
 const DUPLICATE_WINDOW_SECONDS = 60 * 60;
-const RESEND_EMAIL_ENDPOINT = "https://api.resend.com/emails";
 
 interface SalesLeadInput {
   name: string;
@@ -35,11 +34,9 @@ export async function createSalesLead(
   if (duplicate) return acceptedResponse(requestId);
 
   const leadId = randomId("lead");
-  const emailConfigured = Boolean(
-    env.RESEND_API_KEY?.trim()
-    && env.SALES_EMAIL_FROM?.trim()
-    && env.SALES_EMAIL_TO?.trim(),
-  );
+  const emailFrom = env.SALES_EMAIL_FROM?.trim();
+  const emailTo = env.SALES_EMAIL_TO?.trim();
+  const emailConfigured = Boolean(emailFrom && emailTo);
   const notificationStatus = emailConfigured ? "pending" : "not_configured";
 
   await env.DB.prepare(
@@ -51,7 +48,7 @@ export async function createSalesLead(
   ).bind(leadId, lead.name, lead.email, lead.phone, now, notificationStatus).run();
 
   if (emailConfigured) {
-    await notifySalesTeam(env, leadId, lead, now);
+    await notifySalesTeam(env, leadId, lead, emailFrom!, emailTo!, now);
   }
 
   return acceptedResponse(requestId);
@@ -61,40 +58,34 @@ async function notifySalesTeam(
   env: Env,
   leadId: string,
   lead: SalesLeadInput,
+  from: string,
+  to: string,
   now: number,
 ): Promise<void> {
   try {
-    const response = await fetch(RESEND_EMAIL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": leadId,
-      },
-      body: JSON.stringify({
-        from: env.SALES_EMAIL_FROM,
-        to: [env.SALES_EMAIL_TO],
-        reply_to: lead.email,
-        subject: "Novo contato comercial - Maltworks",
-        text: [
-          "Um novo contato comercial foi recebido pelo painel Maltworks.",
-          "",
-          `Nome: ${lead.name}`,
-          `E-mail: ${lead.email}`,
-          `Celular: ${lead.phone}`,
-          `Lead ID: ${leadId}`,
-        ].join("\n"),
-        tags: [{ name: "source", value: "login-page" }],
-      }),
+    const text = [
+      "Um novo contato comercial foi recebido pelo painel Maltworks.",
+      "",
+      `Nome: ${lead.name}`,
+      `E-mail: ${lead.email}`,
+      `Celular: ${lead.phone}`,
+      `Lead ID: ${leadId}`,
+    ].join("\n");
+    const response = await env.EMAIL.send({
+      from: { email: from, name: "Maltworks" },
+      to,
+      replyTo: lead.email,
+      subject: "Novo contato comercial - Maltworks",
+      text,
+      html: [
+        "<p>Um novo contato comercial foi recebido pelo painel Maltworks.</p>",
+        `<p><strong>Nome:</strong> ${escapeHtml(lead.name)}<br>`,
+        `<strong>E-mail:</strong> ${escapeHtml(lead.email)}<br>`,
+        `<strong>Celular:</strong> ${escapeHtml(lead.phone)}<br>`,
+        `<strong>Lead ID:</strong> ${escapeHtml(leadId)}</p>`,
+      ].join(""),
     });
-
-    const responseText = await response.text();
-    if (!response.ok) {
-      throw new Error(`Resend HTTP ${response.status}: ${responseText.slice(0, 300)}`);
-    }
-
-    const payload = safeObject(responseText);
-    const notificationId = typeof payload.id === "string" ? payload.id.slice(0, 120) : null;
+    const notificationId = response.messageId?.slice(0, 120) ?? null;
     await updateNotification(env.DB, leadId, "sent", notificationId, null, now);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida no envio.";
@@ -170,15 +161,13 @@ function requiredString(
   return normalized;
 }
 
-function safeObject(value: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function acceptedResponse(requestId: string): Response {

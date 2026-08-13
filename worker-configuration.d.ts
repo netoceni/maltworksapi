@@ -6,8 +6,8 @@ interface Env {
   BOOTSTRAP_SECRET: string;
   PASSWORD_PEPPER: string;
   PASSWORD_RESET_SECRET?: string;
-  RESEND_API_KEY?: string;
-  SALES_EMAIL_FROM?: string;
-  SALES_EMAIL_TO?: string;
-  NOTIFICATION_EMAIL_FROM?: string;
+  EMAIL: SendEmail;
+  SALES_EMAIL_FROM: string;
+  SALES_EMAIL_TO: string;
+  NOTIFICATION_EMAIL_FROM: string;
 }

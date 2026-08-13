@@ -13,8 +13,17 @@
   "vars": {
     "APP_ORIGIN": "https://app.maltworks.com.br",
     "ADMIN_ORIGIN": "https://admin.maltworks.com.br",
-    "SESSION_TTL_DAYS": "30"
+    "SESSION_TTL_DAYS": "30",
+    "SALES_EMAIL_FROM": "notificacoes@maltworks.com.br",
+    "SALES_EMAIL_TO": "neto__ceni@hotmail.com",
+    "NOTIFICATION_EMAIL_FROM": "notificacoes@maltworks.com.br"
   },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_destination_addresses": ["neto__ceni@hotmail.com"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

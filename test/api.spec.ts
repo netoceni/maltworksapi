@@ -150,7 +150,7 @@ describe("Maltworks Cloud API 5.10.0", () => {
       email: "maria@example.com",
       phone: "+5511999998888",
       status: "new",
-      notificationStatus: "not_configured",
+      notificationStatus: "sent",
     });
 
     const duplicate = await request(lead);

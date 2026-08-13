@@ -3,7 +3,6 @@ import { randomId } from "./crypto";
 import { jsonResponse, readJson } from "./http";
 import { ApiError, type TelemetryPayload } from "./types";
 
-const RESEND_EMAIL_ENDPOINT = "https://api.resend.com/emails";
 const OFFLINE_AFTER_SECONDS = 120;
 const NOTIFICATION_ID_PATTERN = /^ntf_[0-9a-f]{32}$/u;
 const CATEGORIES = ["device", "sensor", "alarm", "profile", "command"] as const;
@@ -394,7 +393,7 @@ export async function updateNotificationPreferences(request: Request, env: Env, 
 export async function deliverNotificationEmails(env: Env, notificationIds: string[]): Promise<void> {
   if (!notificationIds.length) return;
   const from = env.NOTIFICATION_EMAIL_FROM?.trim() || env.SALES_EMAIL_FROM?.trim();
-  if (!env.RESEND_API_KEY?.trim() || !from) return;
+  if (!from) return;
 
   for (const notificationId of notificationIds) {
     const notification = await env.DB.prepare(
@@ -442,28 +441,18 @@ async function deliverOneEmail(
   if ((inserted.meta.changes ?? 0) !== 1) return;
 
   try {
-    const response = await fetch(RESEND_EMAIL_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": `${notification.id}:${recipient.userId}`,
-      },
-      body: JSON.stringify({
-        from,
-        to: [recipient.email],
-        subject: `[Maltworks] ${notification.title}`,
-        text: `${recipient.displayName},\n\n${notification.message}\n\nAbra o painel Maltworks para ver os detalhes.`,
-        html: `<p>${escapeHtml(recipient.displayName)},</p><p>${escapeHtml(notification.message)}</p><p><a href="https://app.maltworks.com.br">Abrir o painel Maltworks</a></p>`,
-        tags: [{ name: "category", value: notification.category }],
-      }),
+    const response = await env.EMAIL.send({
+      from: { email: from, name: "Maltworks" },
+      to: recipient.email,
+      subject: `[Maltworks] ${notification.title}`,
+      text: `${recipient.displayName},\n\n${notification.message}\n\nAbra o painel Maltworks para ver os detalhes.`,
+      html: `<p>${escapeHtml(recipient.displayName)},</p><p>${escapeHtml(notification.message)}</p><p><a href="https://app.maltworks.com.br">Abrir o painel Maltworks</a></p>`,
     });
-    if (!response.ok) throw new Error(`Resend HTTP ${response.status}`);
-    await updateDelivery(env.DB, notification.id, recipient.userId, "sent", null, now);
+    await updateDelivery(env.DB, notification.id, recipient.userId, "sent", response.messageId, null, now);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha desconhecida no envio.";
     console.error("Notification email failed", { notificationId: notification.id, userId: recipient.userId, error: message });
-    await updateDelivery(env.DB, notification.id, recipient.userId, "failed", message.slice(0, 400), now);
+    await updateDelivery(env.DB, notification.id, recipient.userId, "failed", null, message.slice(0, 400), now);
   }
 }
 
@@ -575,14 +564,16 @@ async function updateDelivery(
   notificationId: string,
   userId: string,
   status: "sent" | "failed",
+  providerId: string | null,
   error: string | null,
   now: number,
 ): Promise<void> {
   await db.prepare(
     `UPDATE notification_deliveries
-        SET status = ?3, attempts = attempts + 1, error = ?4, updated_at = ?5
+        SET status = ?3, attempts = attempts + 1, provider_id = ?4,
+            error = ?5, updated_at = ?6
       WHERE notification_id = ?1 AND user_id = ?2 AND channel = 'email'`,
-  ).bind(notificationId, userId, status, error, now).run();
+  ).bind(notificationId, userId, status, providerId, error, now).run();
 }
 
 async function optionalBody(request: Request): Promise<Record<string, unknown>> {
