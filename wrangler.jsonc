@@ -8,6 +8,9 @@
   "observability": {
     "enabled": true
   },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "vars": {
     "APP_ORIGIN": "https://app.maltworks.com.br",
     "ADMIN_ORIGIN": "https://admin.maltworks.com.br",

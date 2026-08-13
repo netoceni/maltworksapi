@@ -33,6 +33,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  scanOfflineDevices,
   updateNotificationPreferences,
 } from "./notifications";
 import { openBrowserRealtime, openDeviceRealtime, RealtimeHub } from "./realtime";
@@ -63,7 +64,7 @@ import {
 
 export { RealtimeHub };
 
-const API_VERSION = "5.13.0";
+const API_VERSION = "5.13.1";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -75,6 +76,9 @@ export default {
     } catch (error) {
       return addCors(errorResponse(error, requestId), request, env);
     }
+  },
+  scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
+    ctx.waitUntil(scanOfflineDevices(env));
   },
 } satisfies ExportedHandler<Env>;
 
