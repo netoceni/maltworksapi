@@ -8,7 +8,7 @@
     "enabled": true
   },
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["* * * * *"]
   },
   "vars": {
     "APP_ORIGIN": "https://app.maltworks.com.br",

@@ -4,7 +4,7 @@ import { jsonResponse, readJson } from "./http";
 import { ApiError, type TelemetryPayload } from "./types";
 
 const RESEND_EMAIL_ENDPOINT = "https://api.resend.com/emails";
-const OFFLINE_AFTER_SECONDS = 300;
+const OFFLINE_AFTER_SECONDS = 120;
 const NOTIFICATION_ID_PATTERN = /^ntf_[0-9a-f]{32}$/u;
 const CATEGORIES = ["device", "sensor", "alarm", "profile", "command"] as const;
 

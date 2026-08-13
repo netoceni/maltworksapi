@@ -35,7 +35,7 @@ import {
   updateNotificationPreferences,
 } from "./notifications";
 
-const API_VERSION = "5.9.0";
+const API_VERSION = "5.9.1";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

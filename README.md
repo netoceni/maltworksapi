@@ -1,4 +1,9 @@
-# Maltworks Cloud API 5.9.0
+# Maltworks Cloud API 5.9.1
+
+## Ajustes 5.9.1
+
+- detecção de controlador offline após 2 minutos sem telemetria;
+- verificação de controladores offline a cada minuto.
 
 ## Novidades 5.9.0
 
