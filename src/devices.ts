@@ -170,7 +170,8 @@ export async function listDevices(request: Request, env: Env, requestId: string)
   const session = await requireSession(request, env);
   const organizationId = selectOrganization(session, new URL(request.url).searchParams.get("organizationId"));
   const rows = await env.DB.prepare(
-    `SELECT d.id, d.name, d.status, d.firmware_version AS firmwareVersion,
+    `SELECT d.id, d.name, d.status, d.favorite,
+            d.firmware_version AS firmwareVersion,
             d.first_seen_at AS firstSeenAt, d.last_seen_at AS lastSeenAt,
             d.claimed_at AS claimedAt, s.received_at AS stateReceivedAt,
             s.refrigerator_value AS refrigeratorValue,
@@ -181,9 +182,86 @@ export async function listDevices(request: Request, env: Env, requestId: string)
        FROM devices d
        LEFT JOIN device_latest_state s ON s.device_id = d.id
       WHERE d.organization_id = ?1
-      ORDER BY d.name COLLATE NOCASE ASC`,
+      ORDER BY d.favorite DESC, d.name COLLATE NOCASE ASC`,
   ).bind(organizationId).all();
-  return jsonResponse({ ok: true, devices: rows.results, requestId });
+  const devices = rows.results.map((device) => ({
+    ...device,
+    favorite: Boolean(device.favorite),
+  }));
+  return jsonResponse({ ok: true, devices, requestId });
+}
+
+export async function updateDevice(
+  request: Request,
+  env: Env,
+  requestId: string,
+  deviceId: string,
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  const raw = await readJson(request);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ApiError(400, "INVALID_BODY", "O corpo da requisicao e invalido.");
+  }
+
+  const body = raw as Record<string, unknown>;
+  const organizationId = selectOrganization(session, body.organizationId);
+  const current = await env.DB.prepare(
+    `SELECT name, favorite
+       FROM devices
+      WHERE id = ?1 AND organization_id = ?2`,
+  ).bind(deviceId, organizationId).first<{ name: string; favorite: number }>();
+  if (!current) {
+    throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado nesta organizacao.");
+  }
+
+  const hasName = Object.prototype.hasOwnProperty.call(body, "name");
+  const hasFavorite = Object.prototype.hasOwnProperty.call(body, "favorite");
+  if (!hasName && !hasFavorite) {
+    throw new ApiError(400, "DEVICE_UPDATE_EMPTY", "Informe o nome ou a preferencia de favorito.");
+  }
+
+  if (hasName && typeof body.name !== "string") {
+    throw new ApiError(400, "INVALID_DEVICE_NAME", "O nome deve ser um texto.");
+  }
+  const name = hasName ? (body.name as string).trim() : current.name;
+  if (hasName && (name.length < 2 || name.length > 80)) {
+    throw new ApiError(400, "INVALID_DEVICE_NAME", "O nome deve ter entre 2 e 80 caracteres.");
+  }
+  if (hasFavorite && typeof body.favorite !== "boolean") {
+    throw new ApiError(400, "INVALID_DEVICE_FAVORITE", "A preferencia de favorito deve ser verdadeira ou falsa.");
+  }
+
+  const favorite = hasFavorite
+    ? (body.favorite === true ? 1 : 0)
+    : current.favorite;
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE devices
+          SET name = ?3, favorite = ?4, updated_at = ?5
+        WHERE id = ?1 AND organization_id = ?2`,
+    ).bind(deviceId, organizationId, name, favorite, now),
+    env.DB.prepare(
+      `INSERT INTO audit_log (
+         organization_id, user_id, device_id, action, details_json, created_at
+       ) VALUES (?1, ?2, ?3, 'device.updated', ?4, ?5)`,
+    ).bind(
+      organizationId,
+      session.userId,
+      deviceId,
+      JSON.stringify({
+        previous: { name: current.name, favorite: Boolean(current.favorite) },
+        current: { name, favorite: Boolean(favorite) },
+      }),
+      now,
+    ),
+  ]);
+
+  return jsonResponse({
+    ok: true,
+    device: { id: deviceId, name, favorite: Boolean(favorite) },
+    requestId,
+  });
 }
 
 export async function deleteDevice(

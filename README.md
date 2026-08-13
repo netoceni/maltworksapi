@@ -1,4 +1,10 @@
-# Maltworks Cloud API 5.7.0
+# Maltworks Cloud API 5.8.0
+
+## Novidades 5.8.0
+
+- edição persistente do nome dos controladores;
+- marcação de controladores favoritos, priorizados na listagem;
+- auditoria das alterações de identificação e preferência.
 
 ## Novidades 5.7.0
 

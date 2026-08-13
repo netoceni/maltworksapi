@@ -69,11 +69,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.7.0", () => {
+describe("Maltworks Cloud API 5.8.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.7.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.8.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -224,8 +224,49 @@ describe("Maltworks Cloud API 5.7.0", () => {
     expect(devices.status).toBe(200);
     expect(await devices.json()).toMatchObject({
       ok: true,
-      devices: [{ id: deviceId, name: "Fermentador principal", status: "active" }],
+      devices: [{ id: deviceId, name: "Fermentador principal", status: "active", favorite: false }],
     });
+
+    const updateDevice = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({ name: "Camara piloto", favorite: true }),
+      },
+    );
+    expect(updateDevice.status).toBe(200);
+    expect(await updateDevice.json()).toMatchObject({
+      ok: true,
+      device: { id: deviceId, name: "Camara piloto", favorite: true },
+    });
+
+    const updatedDevices = await exports.default.fetch("https://api.maltworks.com.br/v1/devices", {
+      headers: { Cookie: cookie ?? "" },
+    });
+    expect(await updatedDevices.json()).toMatchObject({
+      devices: [{ id: deviceId, name: "Camara piloto", favorite: true }],
+    });
+
+    const invalidFavorite = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({ favorite: "yes" }),
+      },
+    );
+    expect(invalidFavorite.status).toBe(400);
+
+    const invalidDeviceName = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: JSON.stringify({ name: 123 }),
+      },
+    );
+    expect(invalidDeviceName.status).toBe(400);
 
     const latest = await exports.default.fetch(
       `https://api.maltworks.com.br/v1/devices/${deviceId}/latest`,

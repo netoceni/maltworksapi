@@ -5,7 +5,14 @@ import {
   createProfileCommand,
   createSetpointCommand,
 } from "./commands";
-import { claimDevice, deleteDevice, deviceHistory, latestDeviceState, listDevices } from "./devices";
+import {
+  claimDevice,
+  deleteDevice,
+  deviceHistory,
+  latestDeviceState,
+  listDevices,
+  updateDevice,
+} from "./devices";
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
@@ -20,7 +27,7 @@ import { ApiError } from "./types";
 import { createSalesLead } from "./sales";
 import { adminListUsers, adminMe, adminOverview } from "./admin";
 
-const API_VERSION = "5.7.0";
+const API_VERSION = "5.8.0";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -113,6 +120,9 @@ async function route(request: Request, env: Env, requestId: string): Promise<Res
     return latestDeviceState(request, env, requestId, latestMatch[1]);
   }
   const deviceMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})$/u.exec(path);
+  if (request.method === "PUT" && deviceMatch?.[1]) {
+    return updateDevice(request, env, requestId, deviceMatch[1]);
+  }
   if (request.method === "DELETE" && deviceMatch?.[1]) {
     return deleteDevice(request, env, requestId, deviceMatch[1]);
   }
