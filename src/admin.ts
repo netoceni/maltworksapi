@@ -4,7 +4,7 @@ import { ApiError, type SessionContext } from "./types";
 
 type SystemRole = "superadmin" | "admin" | "support";
 
-interface AdminContext {
+export interface AdminContext {
   session: SessionContext;
   role: SystemRole;
 }
@@ -24,7 +24,7 @@ export async function adminMe(request: Request, env: Env, requestId: string): Pr
 
 export async function adminOverview(request: Request, env: Env, requestId: string): Promise<Response> {
   await requireSystemAdmin(request, env);
-  const onlineSince = Math.floor(Date.now() / 1000) - 300;
+  const onlineSince = Math.floor(Date.now() / 1000) - 30;
   const [users, organizations, devices] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) AS total FROM users").first<{ total: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS total FROM organizations").first<{ total: number }>(),
@@ -44,7 +44,7 @@ export async function adminOverview(request: Request, env: Env, requestId: strin
       devices: devices?.total ?? 0,
       devicesOnline: devices?.online ?? 0,
       devicesPending: devices?.pending ?? 0,
-      onlineWindowSeconds: 300,
+      onlineWindowSeconds: 30,
     },
     requestId,
   });
@@ -56,7 +56,7 @@ export async function adminListUsers(request: Request, env: Env, requestId: stri
   const page = boundedInteger(url.searchParams.get("page"), 1, 100_000, 1);
   const limit = boundedInteger(url.searchParams.get("limit"), 1, 100, 25);
   const offset = (page - 1) * limit;
-  const onlineSince = Math.floor(Date.now() / 1000) - 300;
+  const onlineSince = Math.floor(Date.now() / 1000) - 30;
 
   const [total, rows] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) AS total FROM users").first<{ total: number }>(),
@@ -108,7 +108,7 @@ export async function adminListUsers(request: Request, env: Env, requestId: stri
   });
 }
 
-async function requireSystemAdmin(request: Request, env: Env): Promise<AdminContext> {
+export async function requireSystemAdmin(request: Request, env: Env): Promise<AdminContext> {
   const session = await requireSession(request, env);
   const admin = await env.DB.prepare(
     "SELECT role FROM system_admins WHERE user_id = ?1",

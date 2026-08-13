@@ -22,6 +22,9 @@
       "allowed_destination_addresses": ["neto__ceni@hotmail.com"]
     }
   ],
+  "r2_buckets": [
+    { "binding": "FIRMWARE", "bucket_name": "maltworks-firmware" }
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "REALTIME", "class_name": "RealtimeHub" }

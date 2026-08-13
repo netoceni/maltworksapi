@@ -240,7 +240,7 @@ export function publishCommandRealtime(env: Env, organizationId: string, deviceI
   return env.REALTIME.getByName(organizationId).commandAvailable(deviceId);
 }
 
-async function authenticateDevice(request: Request, env: Env): Promise<DeviceIdentity> {
+export async function authenticateDevice(request: Request, env: Env): Promise<DeviceIdentity> {
   const deviceId = (request.headers.get("X-Maltworks-Device-ID") ?? "").toUpperCase();
   if (!DEVICE_ID_PATTERN.test(deviceId)) {
     throw new ApiError(400, "INVALID_DEVICE_ID", "Device ID ausente ou invalido.");

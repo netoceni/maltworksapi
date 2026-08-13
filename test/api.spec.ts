@@ -70,11 +70,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.11.0", () => {
+describe("Maltworks Cloud API 5.12.0", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.11.0" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.12.0" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -972,6 +972,73 @@ describe("Maltworks Cloud API 5.11.0", () => {
       ok: true,
       overview: { users: 1, organizations: 1, devices: 1 },
     });
+
+    const adminCookie = newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "";
+    const firmwareImage = new Uint8Array(64_000);
+    firmwareImage[0] = 0xe9;
+    firmwareImage.set(new TextEncoder().encode(
+      'MALTWORKS_FW_META:{"product":"MaltworksController","version":"5.5.0","boardFamily":"ESP32","phase":"Fase5_5_0"}:MALTWORKS_FW_META_END',
+    ), 256);
+    const firmwareUpload = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/admin/firmware",
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/octet-stream",
+          "X-Firmware-Product": "MaltworksController",
+          "X-Firmware-Version": "5.5.0",
+          "X-Firmware-Board-Family": "ESP32",
+          "X-Firmware-Phase": "Fase5_5_0",
+        },
+        body: firmwareImage,
+      },
+    );
+    expect(firmwareUpload.status).toBe(201);
+    const firmwareBody = await firmwareUpload.json() as { release: { id: string; sha256: string } };
+    expect(firmwareBody.release.sha256).toMatch(/^[0-9a-f]{64}$/u);
+
+    const campaignCreate = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/admin/ota/campaigns",
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Piloto 5.5.0",
+          releaseId: firmwareBody.release.id,
+          pilotDeviceId: deviceId,
+          rolloutPercentage: 0,
+        }),
+      },
+    );
+    expect(campaignCreate.status).toBe(201);
+
+    const otaCheck = await exports.default.fetch("https://api.maltworks.com.br/v1/device/ota", {
+      headers: { Authorization: `Bearer ${replacementToken}`, "X-Maltworks-Device-ID": deviceId },
+    });
+    expect(otaCheck.status).toBe(200);
+    const otaBody = await otaCheck.json() as { update: { id: string; targetVersion: string; downloadUrl: string } };
+    expect(otaBody.update).toMatchObject({ targetVersion: "5.5.0" });
+
+    const firmwareDownload = await exports.default.fetch(otaBody.update.downloadUrl, {
+      headers: { Authorization: `Bearer ${replacementToken}`, "X-Maltworks-Device-ID": deviceId },
+    });
+    expect(firmwareDownload.status).toBe(200);
+    expect((await firmwareDownload.arrayBuffer()).byteLength).toBe(64_000);
+
+    const otaEvent = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/device/ota/${otaBody.update.id}/events`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${replacementToken}`,
+          "X-Maltworks-Device-ID": deviceId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: "downloading", progress: 25, message: "Teste" }),
+      },
+    );
+    expect(otaEvent.status).toBe(200);
 
     const authenticatedCookie = newPasswordLogin.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "";
     const notificationBaseline = telemetry(102);

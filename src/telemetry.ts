@@ -8,6 +8,7 @@ import {
 } from "./notifications";
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
 import { publishNotificationsRealtime, publishTelemetryRealtime } from "./realtime";
+import { reconcileOtaFromTelemetry } from "./ota";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
 const BOOT_ID_PATTERN = /^[0-9A-F]{8}$/;
@@ -206,6 +207,7 @@ export async function ingestTelemetry(
   }
   const notificationIds = await recordTelemetryNotifications(env, payload, previous, now);
   ctx.waitUntil(publishTelemetryRealtime(env, previous?.organizationId ?? null, payload, now));
+  ctx.waitUntil(reconcileOtaFromTelemetry(env, payload.deviceId, payload.firmware.version, now));
   if (notificationIds.length) {
     ctx.waitUntil(deliverNotificationEmails(env, notificationIds));
     ctx.waitUntil(publishNotificationsRealtime(env, previous?.organizationId ?? null));

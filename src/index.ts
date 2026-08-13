@@ -36,10 +36,21 @@ import {
   updateNotificationPreferences,
 } from "./notifications";
 import { openBrowserRealtime, openDeviceRealtime, RealtimeHub } from "./realtime";
+import {
+  adminCreateCampaign,
+  adminListCampaigns,
+  adminListFirmware,
+  adminListOtaDevices,
+  adminUpdateCampaign,
+  adminUploadFirmware,
+  deviceOtaCheck,
+  deviceOtaEvent,
+  deviceOtaFirmware,
+} from "./ota";
 
 export { RealtimeHub };
 
-const API_VERSION = "5.11.0";
+const API_VERSION = "5.12.0";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -87,6 +98,17 @@ async function route(
   if (request.method === "GET" && path === "/v1/device/realtime") {
     return openDeviceRealtime(request, env);
   }
+  if (request.method === "GET" && path === "/v1/device/ota") {
+    return deviceOtaCheck(request, env, requestId);
+  }
+  const deviceOtaFirmwareMatch = /^\/v1\/device\/ota\/(otaj_[0-9a-f]{32})\/firmware$/u.exec(path);
+  if (request.method === "GET" && deviceOtaFirmwareMatch?.[1]) {
+    return deviceOtaFirmware(request, env, deviceOtaFirmwareMatch[1]);
+  }
+  const deviceOtaEventMatch = /^\/v1\/device\/ota\/(otaj_[0-9a-f]{32})\/events$/u.exec(path);
+  if (request.method === "POST" && deviceOtaEventMatch?.[1]) {
+    return deviceOtaEvent(request, env, requestId, deviceOtaEventMatch[1]);
+  }
   if (request.method === "POST" && path === "/v1/sales/leads") {
     return createSalesLead(request, env, requestId);
   }
@@ -116,6 +138,25 @@ async function route(
   }
   if (request.method === "GET" && path === "/v1/admin/users") {
     return adminListUsers(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/firmware") {
+    return adminListFirmware(request, env, requestId);
+  }
+  if (request.method === "POST" && path === "/v1/admin/firmware") {
+    return adminUploadFirmware(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/ota/devices") {
+    return adminListOtaDevices(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/ota/campaigns") {
+    return adminListCampaigns(request, env, requestId);
+  }
+  if (request.method === "POST" && path === "/v1/admin/ota/campaigns") {
+    return adminCreateCampaign(request, env, requestId);
+  }
+  const adminCampaignMatch = /^\/v1\/admin\/ota\/campaigns\/(ota_[0-9a-f]{32})$/u.exec(path);
+  if (request.method === "PUT" && adminCampaignMatch?.[1]) {
+    return adminUpdateCampaign(request, env, requestId, adminCampaignMatch[1]);
   }
   if (request.method === "POST" && path === "/v1/devices/claim") {
     return claimDevice(request, env, requestId);
