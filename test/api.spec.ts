@@ -84,6 +84,28 @@ describe("Maltworks Cloud API 5.8.0", () => {
     );
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("Access-Control-Allow-Methods")).toContain("PUT");
+
+    const localPreflight = await exports.default.fetch("http://127.0.0.1:8787/v1/devices", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://127.0.0.1:8788",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    expect(localPreflight.status).toBe(204);
+    expect(localPreflight.headers.get("Access-Control-Allow-Origin")).toBe("http://127.0.0.1:8788");
+
+    const productionRejectsLocalOrigin = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/devices",
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "http://127.0.0.1:8788",
+          "Access-Control-Request-Method": "GET",
+        },
+      },
+    );
+    expect(productionRejectsLocalOrigin.status).toBe(403);
     expect(preflight.headers.get("Access-Control-Allow-Methods")).toContain("DELETE");
   });
 

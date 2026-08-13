@@ -99,7 +99,7 @@ export function clearSessionCookie(): string {
 
 export function addCors(response: Response, request: Request, env: Env): Response {
   const origin = request.headers.get("Origin");
-  if (!origin || !allowedOrigin(origin, env)) return response;
+  if (!origin || !allowedOrigin(origin, request, env)) return response;
 
   const headers = new Headers(response.headers);
   headers.set("Access-Control-Allow-Origin", origin);
@@ -114,7 +114,7 @@ export function addCors(response: Response, request: Request, env: Env): Respons
 
 export function preflightResponse(request: Request, env: Env): Response {
   const origin = request.headers.get("Origin");
-  if (!origin || !allowedOrigin(origin, env)) {
+  if (!origin || !allowedOrigin(origin, request, env)) {
     throw new ApiError(403, "ORIGIN_NOT_ALLOWED", "Origem nao autorizada.");
   }
 
@@ -131,6 +131,17 @@ export function preflightResponse(request: Request, env: Env): Response {
   });
 }
 
-function allowedOrigin(origin: string, env: Env): boolean {
-  return origin === env.APP_ORIGIN || origin === env.ADMIN_ORIGIN;
+function allowedOrigin(origin: string, request: Request, env: Env): boolean {
+  if (origin === env.APP_ORIGIN || origin === env.ADMIN_ORIGIN) return true;
+
+  try {
+    const apiHostname = new URL(request.url).hostname;
+    const originUrl = new URL(origin);
+    const loopbackHostnames = new Set(["127.0.0.1", "localhost", "::1"]);
+    return loopbackHostnames.has(apiHostname) &&
+      loopbackHostnames.has(originUrl.hostname) &&
+      ["http:", "https:"].includes(originUrl.protocol);
+  } catch {
+    return false;
+  }
 }
