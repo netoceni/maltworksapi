@@ -70,11 +70,11 @@ async function sendTelemetry(payload = telemetry(), suppliedToken = token): Prom
   });
 }
 
-describe("Maltworks Cloud API 5.13.2", () => {
+describe("Maltworks Cloud API 5.13.3", () => {
   it("reports a healthy D1 binding", async () => {
     const response = await exports.default.fetch("https://api.maltworks.com.br/health");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, version: "5.13.2" });
+    expect(await response.json()).toMatchObject({ ok: true, version: "5.13.3" });
 
     const preflight = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes/rcp_0123456789abcdef0123456789abcdef",
@@ -1110,6 +1110,44 @@ describe("Maltworks Cloud API 5.13.2", () => {
     const firmwareBody = await firmwareUpload.json() as { release: { id: string; sha256: string } };
     expect(firmwareBody.release.sha256).toMatch(/^[0-9a-f]{64}$/u);
 
+    const firmwareStatus = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}/firmware`,
+      { headers: { Cookie: adminCookie } },
+    );
+    expect(firmwareStatus.status).toBe(200);
+    expect(await firmwareStatus.json()).toMatchObject({
+      firmware: {
+        currentVersion: "5.0.0",
+        latestVersion: "5.5.0",
+        updateAvailable: true,
+        assignment: null,
+      },
+    });
+
+    const userFirmwareUpdate = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}/firmware/update`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(userFirmwareUpdate.status).toBe(202);
+    expect(await userFirmwareUpdate.json()).toMatchObject({
+      assignment: { status: "assigned", progress: 0, targetVersion: "5.5.0" },
+    });
+
+    const duplicateUserFirmwareUpdate = await exports.default.fetch(
+      `https://api.maltworks.com.br/v1/devices/${deviceId}/firmware/update`,
+      {
+        method: "POST",
+        headers: { Cookie: adminCookie, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    expect(duplicateUserFirmwareUpdate.status).toBe(200);
+    expect(await duplicateUserFirmwareUpdate.json()).toMatchObject({ alreadyScheduled: true });
+
     const campaignCreate = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/admin/ota/campaigns",
       {
@@ -1216,7 +1254,7 @@ describe("Maltworks Cloud API 5.13.2", () => {
       notifications: Array<{ id: string; type: string; message: string; isRead: boolean }>;
       unreadCount: number;
     };
-    expect(notificationBody.unreadCount).toBeGreaterThanOrEqual(7);
+    expect(notificationBody.unreadCount).toBeGreaterThanOrEqual(8);
     expect(notificationBody.notifications.map((item) => item.type)).toEqual(expect.arrayContaining([
       "alarm_activated",
       "alarm_resolved",
@@ -1225,6 +1263,7 @@ describe("Maltworks Cloud API 5.13.2", () => {
       "profile_stage_changed",
       "device_offline",
       "device_online",
+      "firmware_available",
     ]));
     expect(notificationBody.notifications.find((item) => item.type === "device_offline")?.message)
       .toContain("mais de 30 segundos");

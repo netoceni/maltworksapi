@@ -52,6 +52,8 @@ import {
   deviceOtaCheck,
   deviceOtaEvent,
   deviceOtaFirmware,
+  userFirmwareStatus,
+  userRequestFirmwareUpdate,
 } from "./ota";
 import {
   addBatchIngredient,
@@ -69,7 +71,7 @@ import {
 
 export { RealtimeHub };
 
-const API_VERSION = "5.13.2";
+const API_VERSION = "5.13.3";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -169,7 +171,7 @@ async function route(
     return adminListFirmware(request, env, requestId);
   }
   if (request.method === "POST" && path === "/v1/admin/firmware") {
-    return adminUploadFirmware(request, env, requestId);
+    return adminUploadFirmware(request, env, requestId, ctx);
   }
   if (request.method === "GET" && path === "/v1/admin/ota/devices") {
     return adminListOtaDevices(request, env, requestId);
@@ -189,6 +191,14 @@ async function route(
   }
   if (request.method === "GET" && path === "/v1/devices") {
     return listDevices(request, env, requestId);
+  }
+  const userFirmwareMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/firmware$/u.exec(path);
+  if (request.method === "GET" && userFirmwareMatch?.[1]) {
+    return userFirmwareStatus(request, env, requestId, userFirmwareMatch[1]);
+  }
+  const userFirmwareUpdateMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/firmware\/update$/u.exec(path);
+  if (request.method === "POST" && userFirmwareUpdateMatch?.[1]) {
+    return userRequestFirmwareUpdate(request, env, requestId, userFirmwareUpdateMatch[1]);
   }
   if (request.method === "GET" && path === "/v1/recipes") {
     return listRecipes(request, env, requestId);

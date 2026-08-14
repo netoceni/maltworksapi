@@ -21,7 +21,7 @@ interface PreviousDeviceState {
 
 interface NotificationInput {
   organizationId: string;
-  deviceId: string;
+  deviceId: string | null;
   eventKey: string;
   category: NotificationCategory;
   type: string;
@@ -29,6 +29,55 @@ interface NotificationInput {
   title: string;
   message: string;
   data?: Record<string, unknown>;
+}
+
+export async function recordFirmwareAvailableNotifications(
+  env: Env,
+  release: { id: string; product: string; version: string; boardFamily: string },
+  now: number,
+): Promise<{ createdIds: string[]; organizationIds: string[] }> {
+  const rows = await env.DB.prepare(
+    `SELECT organization_id AS organizationId, firmware_version AS firmwareVersion
+       FROM devices
+      WHERE organization_id IS NOT NULL AND status = 'active'`,
+  ).all<{ organizationId: string; firmwareVersion: string }>();
+  const organizations = new Set<string>();
+  for (const device of rows.results) {
+    if (compareFirmwareVersions(release.version, device.firmwareVersion) > 0) {
+      organizations.add(device.organizationId);
+    }
+  }
+
+  const created: string[] = [];
+  for (const organizationId of organizations) {
+    created.push(...await createOne(env.DB, {
+      organizationId,
+      deviceId: null,
+      eventKey: `firmware:${release.id}:${organizationId}`,
+      category: "device",
+      type: "firmware_available",
+      severity: "info",
+      title: `Firmware ${release.version} disponivel`,
+      message: "Uma nova versao do controlador esta pronta. Abra Dispositivo para verificar e iniciar a atualizacao.",
+      data: {
+        releaseId: release.id,
+        product: release.product,
+        version: release.version,
+        boardFamily: release.boardFamily,
+      },
+    }, now));
+  }
+  return { createdIds: created, organizationIds: [...organizations] };
+}
+
+function compareFirmwareVersions(left: string, right: string): number {
+  const a = left.split(/[.-]/u).slice(0, 3).map(Number);
+  const b = right.split(/[.-]/u).slice(0, 3).map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
 }
 
 interface StoredNotification {

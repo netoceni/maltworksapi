@@ -1,7 +1,9 @@
 import { requireSystemAdmin } from "./admin";
+import { requireSession, selectOrganization } from "./auth";
 import { randomId, sha256Hex } from "./crypto";
 import { jsonResponse, readJson } from "./http";
-import { authenticateDevice } from "./realtime";
+import { recordFirmwareAvailableNotifications } from "./notifications";
+import { authenticateDevice, publishNotificationsRealtime } from "./realtime";
 import { ApiError } from "./types";
 
 const RELEASE_ID_PATTERN = /^fw_[0-9a-f]{32}$/u;
@@ -26,7 +28,12 @@ export async function adminListFirmware(request: Request, env: Env, requestId: s
   return jsonResponse({ ok: true, releases: rows.results, requestId });
 }
 
-export async function adminUploadFirmware(request: Request, env: Env, requestId: string): Promise<Response> {
+export async function adminUploadFirmware(
+  request: Request,
+  env: Env,
+  requestId: string,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const admin = await requireSystemAdmin(request, env);
   if (admin.role !== "superadmin" && admin.role !== "admin") {
     throw new ApiError(403, "OTA_WRITE_REQUIRED", "Seu perfil nao pode publicar firmware.");
@@ -79,7 +86,101 @@ export async function adminUploadFirmware(request: Request, env: Env, requestId:
     await env.FIRMWARE.delete(objectKey);
     throw error;
   }
+  try {
+    const notifications = await recordFirmwareAvailableNotifications(env, { id, product, version, boardFamily }, now);
+    ctx.waitUntil(Promise.all(notifications.organizationIds.map((organizationId) =>
+      publishNotificationsRealtime(env, organizationId))).then(() => undefined));
+  } catch (error) {
+    console.error("Firmware notification creation failed", { releaseId: id, error });
+  }
   return jsonResponse({ ok: true, release: { id, product, version, boardFamily, phase, sizeBytes: binary.byteLength, sha256, status: "ready", createdAt: now }, requestId }, 201);
+}
+
+export async function userFirmwareStatus(
+  request: Request,
+  env: Env,
+  requestId: string,
+  deviceId: string,
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  const organizationId = selectOrganization(session, new URL(request.url).searchParams.get("organizationId"));
+  const device = await userOtaDevice(env.DB, deviceId, organizationId);
+  if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado nesta organizacao.");
+  const release = await latestReadyRelease(env.DB);
+  const assignment = await latestDeviceAssignment(env.DB, deviceId);
+  return jsonResponse({
+    ok: true,
+    firmware: {
+      currentVersion: device.firmwareVersion,
+      latestVersion: release?.version ?? null,
+      releaseId: release?.id ?? null,
+      phase: release?.phase ?? null,
+      updateAvailable: Boolean(release && compareVersions(release.version, device.firmwareVersion) > 0),
+      assignment,
+    },
+    requestId,
+  });
+}
+
+export async function userRequestFirmwareUpdate(
+  request: Request,
+  env: Env,
+  requestId: string,
+  deviceId: string,
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  const body = objectValue(await readJson(request));
+  const organizationId = selectOrganization(session, body.organizationId);
+  const membership = session.memberships.find((item) => item.organizationId === organizationId);
+  if (!membership || membership.role === "viewer") {
+    throw new ApiError(403, "DEVICE_CONTROL_DENIED", "Seu perfil nao pode atualizar controladores.");
+  }
+  const device = await userOtaDevice(env.DB, deviceId, organizationId);
+  if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado nesta organizacao.");
+  if (device.status !== "active") throw new ApiError(409, "DEVICE_NOT_ACTIVE", "O controlador nao esta ativo.");
+  const now = epochSeconds();
+  if (now - device.lastSeenAt > 30) {
+    throw new ApiError(409, "DEVICE_OFFLINE", "O controlador esta offline. Aguarde a reconexao.");
+  }
+  if (profileIsActive(device.stateJson)) {
+    throw new ApiError(409, "PROFILE_ACTIVE", "Encerre a fermentacao ativa antes de atualizar o firmware.");
+  }
+  const release = await latestReadyRelease(env.DB);
+  if (!release) throw new ApiError(404, "FIRMWARE_NOT_AVAILABLE", "Nenhum firmware esta disponivel.");
+  if (compareVersions(release.version, device.firmwareVersion) <= 0) {
+    throw new ApiError(409, "FIRMWARE_ALREADY_CURRENT", "Este controlador ja esta na versao mais recente.");
+  }
+  const existing = await activeDeviceAssignment(env.DB, deviceId);
+  if (existing) {
+    if (existing.releaseId === release.id) {
+      return jsonResponse({ ok: true, alreadyScheduled: true, assignment: existing, requestId });
+    }
+    throw new ApiError(409, "OTA_ALREADY_ACTIVE", "Ja existe outra atualizacao em andamento neste controlador.");
+  }
+
+  const campaignId = randomId("ota");
+  const assignmentId = randomId("otaj");
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO ota_campaigns
+         (id, release_id, name, rollout_percentage, pilot_device_id, status, created_by, created_at, updated_at)
+       VALUES (?1, ?2, ?3, 0, ?4, 'active', ?5, ?6, ?6)`,
+    ).bind(campaignId, release.id, `Atualizacao solicitada - ${device.name} - ${release.version}`, deviceId, session.userId, now),
+    env.DB.prepare(
+      `INSERT INTO ota_assignments
+         (id, campaign_id, release_id, device_id, source_version, target_version, status, progress, assigned_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'assigned', 0, ?7, ?7)`,
+    ).bind(assignmentId, campaignId, release.id, deviceId, device.firmwareVersion, release.version, now),
+    env.DB.prepare(
+      `INSERT INTO audit_log (organization_id, user_id, device_id, action, details_json, created_at)
+       VALUES (?1, ?2, ?3, 'firmware.update_requested', ?4, ?5)`,
+    ).bind(organizationId, session.userId, deviceId, JSON.stringify({ releaseId: release.id, version: release.version }), now),
+  ]);
+  return jsonResponse({
+    ok: true,
+    assignment: { id: assignmentId, status: "assigned", progress: 0, targetVersion: release.version },
+    requestId,
+  }, 202);
 }
 
 export async function adminListOtaDevices(request: Request, env: Env, requestId: string): Promise<Response> {
@@ -279,12 +380,91 @@ export async function reconcileOtaFromTelemetry(env: Env, deviceId: string, firm
   ]);
 }
 
-interface ReleaseRow { id: string; product: string; version: string; boardFamily: string; status: string }
+interface ReleaseRow {
+  id: string;
+  product: string;
+  version: string;
+  boardFamily: string;
+  phase: string;
+  status: string;
+}
+
+interface UserOtaDeviceRow {
+  name: string;
+  status: string;
+  firmwareVersion: string;
+  lastSeenAt: number;
+  stateJson: string | null;
+}
+
+interface UserAssignmentRow {
+  id: string;
+  releaseId: string;
+  targetVersion: string;
+  status: AssignmentStatus;
+  progress: number;
+  errorMessage: string | null;
+  updatedAt: number;
+}
 
 async function releaseById(db: D1Database, id: string): Promise<ReleaseRow | null> {
   return db.prepare(
-    "SELECT id, product, version, board_family AS boardFamily, status FROM firmware_releases WHERE id = ?1",
+    "SELECT id, product, version, board_family AS boardFamily, phase, status FROM firmware_releases WHERE id = ?1",
   ).bind(id).first<ReleaseRow>();
+}
+
+async function latestReadyRelease(db: D1Database): Promise<ReleaseRow | null> {
+  const rows = await db.prepare(
+    `SELECT id, product, version, board_family AS boardFamily, phase, status
+       FROM firmware_releases
+      WHERE product = 'MaltworksController' AND board_family = 'ESP32' AND status = 'ready'`,
+  ).all<ReleaseRow>();
+  return rows.results.reduce<ReleaseRow | null>((latest, release) =>
+    !latest || compareVersions(release.version, latest.version) > 0 ? release : latest, null);
+}
+
+async function userOtaDevice(
+  db: D1Database,
+  deviceId: string,
+  organizationId: string,
+): Promise<UserOtaDeviceRow | null> {
+  return db.prepare(
+    `SELECT d.name, d.status, d.firmware_version AS firmwareVersion,
+            d.last_seen_at AS lastSeenAt, s.state_json AS stateJson
+       FROM devices d
+       LEFT JOIN device_latest_state s ON s.device_id = d.id
+      WHERE d.id = ?1 AND d.organization_id = ?2`,
+  ).bind(deviceId, organizationId).first<UserOtaDeviceRow>();
+}
+
+function profileIsActive(stateJson: string | null): boolean {
+  if (!stateJson) return false;
+  try {
+    const state = JSON.parse(stateJson) as { profile?: { active?: unknown } };
+    return state.profile?.active === true;
+  } catch {
+    return false;
+  }
+}
+
+async function latestDeviceAssignment(db: D1Database, deviceId: string): Promise<UserAssignmentRow | null> {
+  return db.prepare(
+    `SELECT id, release_id AS releaseId, target_version AS targetVersion, status,
+            progress, error_message AS errorMessage, updated_at AS updatedAt
+       FROM ota_assignments WHERE device_id = ?1
+      ORDER BY updated_at DESC LIMIT 1`,
+  ).bind(deviceId).first<UserAssignmentRow>();
+}
+
+async function activeDeviceAssignment(db: D1Database, deviceId: string): Promise<UserAssignmentRow | null> {
+  return db.prepare(
+    `SELECT id, release_id AS releaseId, target_version AS targetVersion, status,
+            progress, error_message AS errorMessage, updated_at AS updatedAt
+       FROM ota_assignments
+      WHERE device_id = ?1
+        AND status IN ('assigned','downloading','installing','rebooting','validating')
+      ORDER BY updated_at DESC LIMIT 1`,
+  ).bind(deviceId).first<UserAssignmentRow>();
 }
 
 async function assertCompatibleDevice(db: D1Database, deviceId: string, release: ReleaseRow): Promise<void> {
