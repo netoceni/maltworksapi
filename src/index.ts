@@ -25,7 +25,7 @@ import {
 } from "./fermentation";
 import { ApiError } from "./types";
 import { createSalesLead } from "./sales";
-import { adminListUsers, adminMe, adminOverview } from "./admin";
+import { adminListUsers, adminMe, adminOverview, adminListSalesLeads, adminUpdateSalesLead } from "./admin";
 import {
   deleteAllNotifications,
   deleteNotification,
@@ -71,7 +71,7 @@ import {
 
 export { RealtimeHub };
 
-const API_VERSION = "5.13.3";
+const API_VERSION = "5.18.0";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -166,6 +166,13 @@ async function route(
   }
   if (request.method === "GET" && path === "/v1/admin/users") {
     return adminListUsers(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/sales/leads") {
+    return adminListSalesLeads(request, env, requestId);
+  }
+  const adminSalesLeadMatch = /^\/v1\/admin\/sales\/leads\/(lead_[0-9a-f]{32})$/u.exec(path);
+  if (request.method === "PUT" && adminSalesLeadMatch?.[1]) {
+    return adminUpdateSalesLead(request, env, requestId, adminSalesLeadMatch[1]);
   }
   if (request.method === "GET" && path === "/v1/admin/firmware") {
     return adminListFirmware(request, env, requestId);

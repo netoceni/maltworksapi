@@ -1,4 +1,10 @@
-# Maltworks Cloud API 5.10.0
+# Maltworks Cloud API 5.18.0
+
+## Pré-venda real 5.18.0
+
+- leads com produto, cidade, quantidade, origem e campanha;
+- status operacionais `NOVO`, `CONTATADO`, `RESERVADO`, `PAGO` e `ENVIADO`;
+- histórico mínimo das alterações de status, protegido pelas rotas administrativas.
 
 ## Novidades 5.10.0
 
@@ -109,6 +115,8 @@ Primeiro servidor cloud do Maltworks Controller, feito para Cloudflare Workers +
 | GET | `/v1/admin/me` | Valida a função administrativa do sistema |
 | GET | `/v1/admin/overview` | Indicadores gerais da plataforma |
 | GET | `/v1/admin/users` | Lista pseudonimizada e paginada de contas |
+| GET | `/v1/admin/sales/leads` | Lista leads de pré-venda para administradores |
+| PUT | `/v1/admin/sales/leads/:id` | Altera o status de um lead de pré-venda |
 | POST | `/v1/devices/claim` | Vincula um ESP32 pendente |
 | GET | `/v1/devices` | Lista controladores da organizacao |
 | GET | `/v1/devices/:id/latest` | Estado mais recente |
@@ -133,7 +141,8 @@ Primeiro servidor cloud do Maltworks Controller, feito para Cloudflare Workers +
 
 ## Contatos comerciais por e-mail
 
-O endpoint publico `/v1/sales/leads` salva nome, e-mail, celular e consentimento
+O endpoint publico `/v1/sales/leads` salva produto, nome, e-mail, celular, cidade,
+quantidade, origem, campanha e consentimento
 no D1. O Worker envia contatos e alertas pelo binding nativo do Cloudflare
 Email Service. `SALES_EMAIL_FROM`, `SALES_EMAIL_TO` e
 `NOTIFICATION_EMAIL_FROM` ficam nas variaveis do Worker. Se o provedor estiver
