@@ -8,6 +8,11 @@ interface SalesLeadInput {
   name: string;
   email: string;
   phone: string;
+  product: string;
+  city: string;
+  quantity: number;
+  source: string;
+  campaign: string | null;
   consent: true;
   website: string;
 }
@@ -41,11 +46,16 @@ export async function createSalesLead(
 
   await env.DB.prepare(
     `INSERT INTO sales_leads (
-       id, name, email, phone, source, status, consent_at,
+       id, name, email, phone, product, city, quantity, source, campaign, status, consent_at,
        notification_status, notification_id, notification_error,
        created_at, updated_at
-     ) VALUES (?1, ?2, ?3, ?4, 'login-page', 'new', ?5, ?6, NULL, NULL, ?5, ?5)`,
-  ).bind(leadId, lead.name, lead.email, lead.phone, now, notificationStatus).run();
+     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'new', ?10, ?11, NULL, NULL, ?10, ?10)`,
+  ).bind(leadId, lead.name, lead.email, lead.phone, lead.product, lead.city, lead.quantity,
+    lead.source, lead.campaign, now, notificationStatus).run();
+  await env.DB.prepare(
+    `INSERT INTO sales_lead_events (id, lead_id, from_status, to_status, changed_by, created_at)
+     VALUES (?1, ?2, NULL, 'new', NULL, ?3)`,
+  ).bind(randomId("leadv"), leadId, now).run();
 
   if (emailConfigured) {
     await notifySalesTeam(env, leadId, lead, emailFrom!, emailTo!, now);
@@ -69,6 +79,9 @@ async function notifySalesTeam(
       `Nome: ${lead.name}`,
       `E-mail: ${lead.email}`,
       `Celular: ${lead.phone}`,
+      `Produto: ${lead.product}`,
+      `Cidade: ${lead.city}`,
+      `Quantidade: ${lead.quantity}`,
       `Lead ID: ${leadId}`,
     ].join("\n");
     const response = await env.EMAIL.send({
@@ -82,6 +95,9 @@ async function notifySalesTeam(
         `<p><strong>Nome:</strong> ${escapeHtml(lead.name)}<br>`,
         `<strong>E-mail:</strong> ${escapeHtml(lead.email)}<br>`,
         `<strong>Celular:</strong> ${escapeHtml(lead.phone)}<br>`,
+        `<strong>Produto:</strong> ${escapeHtml(lead.product)}<br>`,
+        `<strong>Cidade:</strong> ${escapeHtml(lead.city)}<br>`,
+        `<strong>Quantidade:</strong> ${lead.quantity}<br>`,
         `<strong>Lead ID:</strong> ${escapeHtml(leadId)}</p>`,
       ].join(""),
     });
@@ -127,7 +143,21 @@ function salesLeadInput(value: unknown): SalesLeadInput {
   }
 
   const website = typeof body.website === "string" ? body.website.trim().slice(0, 200) : "";
-  return { name, email, phone, consent: true, website };
+  const product = optionalString(body.product, "Contato comercial", 2, 160);
+  const city = optionalString(body.city, "Não informado", 2, 120).replace(/\s+/gu, " ");
+  const quantityValue = body.quantity === undefined || body.quantity === null ? 1 : body.quantity;
+  const quantity = Number(quantityValue);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+    throw new ApiError(400, "INVALID_QUANTITY", "Informe uma quantidade entre 1 e 999.");
+  }
+  const source = optionalString(body.source, "login-page", 2, 80);
+  const campaign = body.campaign == null ? null : optionalString(body.campaign, "", 1, 120) || null;
+  return { name, email, phone, product, city, quantity, source, campaign, consent: true, website };
+}
+
+function optionalString(value: unknown, fallback: string, minimumLength: number, maximumLength: number): string {
+  if (value === undefined || value === null || value === "") return fallback;
+  return requiredString(value, "campo", minimumLength, maximumLength);
 }
 
 function honeypotValue(value: unknown): string {

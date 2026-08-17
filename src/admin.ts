@@ -1,6 +1,8 @@
 import { requireSession } from "./auth";
 import { jsonResponse } from "./http";
 import { ApiError, type SessionContext } from "./types";
+import { readJson } from "./http";
+import { randomId } from "./crypto";
 
 type SystemRole = "superadmin" | "admin" | "support";
 
@@ -106,6 +108,41 @@ export async function adminListUsers(request: Request, env: Env, requestId: stri
     },
     requestId,
   });
+}
+
+const SALES_STATUSES = ["new", "contacted", "reserved", "paid", "shipped"] as const;
+type SalesStatus = typeof SALES_STATUSES[number];
+const salesStatusLabel: Record<SalesStatus, string> = { new: "NOVO", contacted: "CONTATADO", reserved: "RESERVADO", paid: "PAGO", shipped: "ENVIADO" };
+
+export async function adminListSalesLeads(request: Request, env: Env, requestId: string): Promise<Response> {
+  await requireSystemAdmin(request, env);
+  const url = new URL(request.url);
+  const limit = boundedInteger(url.searchParams.get("limit"), 1, 100, 50);
+  const status = url.searchParams.get("status");
+  const where = status && SALES_STATUSES.includes(status as SalesStatus) ? "WHERE status = ?1" : "";
+  const query = `SELECT id, name, email, phone, product, city, quantity, source, campaign, status, created_at AS createdAt, updated_at AS updatedAt
+    FROM sales_leads ${where} ORDER BY created_at DESC, id DESC LIMIT ?${where ? 2 : 1}`;
+  const stmt = where ? env.DB.prepare(query).bind(status, limit) : env.DB.prepare(query).bind(limit);
+  const rows = await stmt.all<Record<string, unknown>>();
+  return jsonResponse({ ok: true, leads: rows.results.map((row) => ({ ...row, status: salesStatusLabel[(row.status as SalesStatus)] ?? "NOVO" })), requestId });
+}
+
+export async function adminUpdateSalesLead(request: Request, env: Env, requestId: string, leadId: string): Promise<Response> {
+  const admin = await requireSystemAdmin(request, env);
+  const body = await readJson(request, 2_048);
+  const status = body && typeof body === "object" ? (body as Record<string, unknown>).status : null;
+  const normalized = typeof status === "string" ? status.toLowerCase() : "";
+  if (!SALES_STATUSES.includes(normalized as SalesStatus)) throw new ApiError(400, "INVALID_SALES_STATUS", "Status de pré-venda inválido.");
+  const now = Math.floor(Date.now() / 1000);
+  const current = await env.DB.prepare("SELECT status FROM sales_leads WHERE id = ?1").bind(leadId).first<{ status: SalesStatus }>();
+  if (!current) throw new ApiError(404, "SALES_LEAD_NOT_FOUND", "Lead de pré-venda não encontrado.");
+  if (current.status !== normalized) {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE sales_leads SET status = ?2, updated_at = ?3 WHERE id = ?1").bind(leadId, normalized, now),
+      env.DB.prepare("INSERT INTO sales_lead_events (id, lead_id, from_status, to_status, changed_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(randomId("leadv"), leadId, current.status, normalized, admin.session.userId, now),
+    ]);
+  }
+  return jsonResponse({ ok: true, leadId, status: salesStatusLabel[normalized as SalesStatus], updatedAt: now, requestId });
 }
 
 export async function requireSystemAdmin(request: Request, env: Env): Promise<AdminContext> {
