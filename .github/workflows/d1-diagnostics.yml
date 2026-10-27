@@ -63,7 +63,7 @@ jobs:
           {
             echo "## D1 production diagnostics"
             echo ""
-            echo "Database: `maltworks-recovery-20261027`"
+            echo 'Database: `maltworks-recovery-20261027`'
             echo ""
             echo "### Database size"
             echo '```json'
