@@ -16,6 +16,7 @@ import {
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
 import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
+import { runD1DailyHealth, shouldRunD1DailyHealth } from "./d1-health";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
 import {
   addGravityReading,
@@ -92,6 +93,15 @@ export default {
           await runTelemetryRetention(env, controller.scheduledTime);
         } catch (error) {
           console.error("Telemetry retention failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      if (shouldRunD1DailyHealth(controller.scheduledTime)) {
+        try {
+          await runD1DailyHealth(env, controller.scheduledTime);
+        } catch (error) {
+          console.error("D1 daily health monitoring failed", {
             message: error instanceof Error ? error.message : String(error),
           });
         }
