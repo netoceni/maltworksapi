@@ -15,6 +15,7 @@ import {
 } from "./devices";
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
+import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
 import {
   addGravityReading,
@@ -84,8 +85,17 @@ export default {
       return addCors(errorResponse(error, requestId), request, env);
     }
   },
-  scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
+  scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
     ctx.waitUntil((async () => {
+      if (shouldPruneTelemetry(controller.scheduledTime)) {
+        try {
+          await runTelemetryRetention(env, controller.scheduledTime);
+        } catch (error) {
+          console.error("Telemetry retention failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       const organizations = await scanOfflineDevices(env);
       await Promise.all(organizations.map((organizationId) =>
         publishNotificationsRealtime(env, organizationId)));
