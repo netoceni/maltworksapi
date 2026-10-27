@@ -1,11 +1,19 @@
 /**
- * Retention for raw temperature telemetry only.
- * Profiles, device configuration, sessions, users, batches and audit records
- * are intentionally outside of this cleanup job.
+ * Retention for detailed telemetry only.
+ * Accounts, credentials, device_latest_state, recipes, fermentation records
+ * and audit events are not touched by the cleanup job.
  */
 export const DEFAULT_TELEMETRY_RETENTION_DAYS = 7;
 export const RETENTION_BATCH_SIZE = 250;
+export const D1_STORAGE_WARNING_BYTES = 350_000_000;
 const MAX_RETENTION_DAYS = 3650;
+
+export interface TelemetryPruneStats {
+  deletedRows: number;
+  sizeAfterBytes: number | null;
+  rowsRead: number | null;
+  rowsWritten: number | null;
+}
 
 export function telemetryRetentionDays(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return DEFAULT_TELEMETRY_RETENTION_DAYS;
@@ -20,30 +28,33 @@ export function telemetryRetentionDays(raw: string | undefined): number {
   return days;
 }
 
-/** Keep the existing once-per-minute cron, but prune only every 10 minutes. */
+/** Keep the existing once-per-minute cron; prune only every 10 minutes. */
 export function shouldPruneTelemetry(scheduledTimeMs: number): boolean {
   return new Date(scheduledTimeMs).getUTCMinutes() % 10 === 0;
 }
 
 /**
- * Delete a bounded number of expired rows per invocation. Never delete the
- * latest device state: that is stored in device_latest_state separately.
+ * Delete only expired raw samples, in a small bounded batch.
+ * The migration idx_telemetry_received_at_id makes the expiration lookup
+ * efficient even when telemetry contains many devices and rows.
  */
 export async function pruneExpiredTelemetry(
   db: D1Database,
   nowSeconds: number,
   retentionDays: number,
   limit = RETENTION_BATCH_SIZE,
-): Promise<number> {
+): Promise<TelemetryPruneStats> {
   if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > MAX_RETENTION_DAYS) {
     throw new Error("Invalid telemetry retention days.");
   }
-  if (retentionDays === 0) return 0; // Explicitly disable deletion.
+  if (retentionDays === 0) {
+    return { deletedRows: 0, sizeAfterBytes: null, rowsRead: null, rowsWritten: null };
+  }
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
     throw new Error("Telemetry pruning batch must be between 1 and 1000 rows.");
   }
   const cutoff = Math.floor(nowSeconds) - retentionDays * 86_400;
-  const result = await db.prepare(
+  const { meta } = await db.prepare(
     `DELETE FROM telemetry
       WHERE id IN (
         SELECT id FROM telemetry
@@ -52,19 +63,34 @@ export async function pruneExpiredTelemetry(
          LIMIT ?2
       )`,
   ).bind(cutoff, limit).run();
-  return result.meta.changes ?? 0;
+  return {
+    deletedRows: meta.changes ?? 0,
+    sizeAfterBytes: Number.isFinite(meta.size_after) ? meta.size_after : null,
+    rowsRead: Number.isFinite(meta.rows_read) ? meta.rows_read : null,
+    rowsWritten: Number.isFinite(meta.rows_written) ? meta.rows_written : null,
+  };
 }
 
 export async function runTelemetryRetention(env: Env, scheduledTimeMs: number): Promise<number> {
-  // Until worker-bindings.d.ts is regenerated, preserve the generated Env type.
+  // Generated Env types can be refreshed with wrangler types later.
   const settings = env as Env & { TELEMETRY_RETENTION_DAYS?: string };
-  const days = telemetryRetentionDays(settings.TELEMETRY_RETENTION_DAYS);
-  const deletedRows = await pruneExpiredTelemetry(env.DB, scheduledTimeMs / 1000, days);
-  if (deletedRows > 0) {
-    console.info("Telemetry retention", {
-      retentionDays: days,
-      deletedRows,
+  const retentionDays = telemetryRetentionDays(settings.TELEMETRY_RETENTION_DAYS);
+  const stats = await pruneExpiredTelemetry(env.DB, scheduledTimeMs / 1000, retentionDays);
+
+  // D1 returns its post-query size and row-usage metrics without an extra query.
+  console.info("Telemetry retention", { retentionDays, ...stats });
+
+  if (stats.sizeAfterBytes !== null && stats.sizeAfterBytes >= D1_STORAGE_WARNING_BYTES) {
+    console.warn("D1 storage approaching free-tier capacity", {
+      sizeAfterBytes: stats.sizeAfterBytes,
+      warningThresholdBytes: D1_STORAGE_WARNING_BYTES,
     });
   }
-  return deletedRows;
+  if (stats.deletedRows === RETENTION_BATCH_SIZE) {
+    console.warn("Telemetry retention batch at capacity", {
+      deletedRows: stats.deletedRows,
+      batchSize: RETENTION_BATCH_SIZE,
+    });
+  }
+  return stats.deletedRows;
 }
