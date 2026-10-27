@@ -63,22 +63,22 @@ jobs:
           {
             echo "## D1 production diagnostics"
             echo ""
-            echo "Database: \`maltworks-recovery-20261027\`"
+            echo "Database: `maltworks-recovery-20261027`"
             echo ""
             echo "### Database size"
-            echo '\`\`\`json'
+            echo '```json'
             cat d1-diagnostics/database.json
-            echo '\`\`\`'
+            echo '```'
             echo ""
             echo "### Telemetry volume and age (Unix timestamps in seconds)"
-            echo '\`\`\`json'
+            echo '```json'
             cat d1-diagnostics/telemetry.json
-            echo '\`\`\`'
+            echo '```'
             echo ""
             echo "### Indexes"
-            echo '\`\`\`json'
+            echo '```json'
             cat d1-diagnostics/indexes.json
-            echo '\`\`\`'
+            echo '```'
             echo ""
             echo "Retention removal ceiling: 250 records / 10 min = 36,000 records / day."
             echo ""
