@@ -40,8 +40,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "maltworks-production",
-      "database_id": "134f4884-ba6e-4f6d-88ef-7b3b021c944d",
+      "database_name": "maltworks-recovery-20261027",
+      "database_id": "a1bf5a75-1bec-4437-92fa-64e69c3da081",
       "migrations_dir": "migrations"
     }
   ]
