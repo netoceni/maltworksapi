@@ -10,8 +10,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:create": "wrangler d1 create maltworks-production",
-    "db:migrate:local": "wrangler d1 migrations apply maltworks-production --local",
-    "db:migrate:remote": "wrangler d1 migrations apply maltworks-production --remote"
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.20.1",
