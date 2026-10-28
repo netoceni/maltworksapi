@@ -86,6 +86,9 @@ export async function aggregatedDeviceHistory(
   );
   const now = Math.floor(Date.now() / 1000);
   const since = now - options.rangeSeconds;
+  // Include the first source bucket if it partially overlaps the requested range.
+  const alignedSince = Math.floor(since / options.sourceResolutionSeconds) *
+    options.sourceResolutionSeconds;
   const table = options.sourceResolutionSeconds === HISTORY_FIVE_MINUTES ?
     "history_5min" : "history_hourly";
   // Only predefined resolutions and validated, bounded integer bucket widths
@@ -121,7 +124,7 @@ export async function aggregatedDeviceHistory(
      GROUP BY ${bucket}
      ORDER BY bucketStart DESC
      LIMIT ?4`,
-  ).bind(deviceId, since, now, options.requestedMaxPoints).all<AggregateRow>();
+  ).bind(deviceId, alignedSince, now, options.requestedMaxPoints).all<AggregateRow>();
   return jsonResponse({
     ok: true,
     deviceId,
