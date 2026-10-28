@@ -55,6 +55,8 @@ jobs:
                 WHERE received_at >= unixepoch('now') - 3600) * 24 AS hourly_projected_rows_per_day,
               (SELECT COUNT(*) FROM telemetry
                 WHERE received_at >= unixepoch('now') - 3600) * 72 AS hourly_estimated_minimum_writes_per_day,
+              (SELECT COUNT(*) FROM telemetry
+                WHERE received_at >= unixepoch('now') - 3600) * 192 AS hourly_approximate_writes_per_day,
               (SELECT COUNT(DISTINCT device_id) FROM telemetry
                 WHERE received_at >= unixepoch('now') - 86400) AS active_devices_24h,
               (SELECT COUNT(*) FROM telemetry
@@ -96,7 +98,7 @@ jobs:
             echo 'Datas anteriores ao primeiro monitoramento podem nao existir.'
             echo 'O snapshot real de hoje confirma a execucao do cron; workflow verde sozinho nao comprova coleta.'
             echo 'Binario de diagnostico e apenas SELECT; nao executa alerta nem limpeza.'
-            echo 'Para estimativas de ingestao: 24 x amostras da ultima hora; escritas MINIMAS = 72 x amostras da ultima hora.'
+            echo 'Para estimativas de ingestao: 24 x amostras da ultima hora; escritas MINIMAS = 72 x amostras/h; escritas aproximadas = 192 x amostras/h (fator 8 observado, nao e dado de faturamento).'
             echo 'Cota D1 Free: 100.000 linhas gravadas/dia. Amostras removiveis pela politica atual: 36.000/dia.'
             echo ""
             echo '~~~json'
