@@ -2,7 +2,7 @@ import { requireSession, selectOrganization } from "./auth";
 import { randomId } from "./crypto";
 import { jsonResponse, readJson } from "./http";
 import { ApiError, type TelemetryPayload } from "./types";
-import { TELEMETRY_PERSIST_INTERVAL_SECONDS } from "./telemetry-sampling";
+import { isStaleTelemetry, TELEMETRY_PERSIST_INTERVAL_SECONDS } from "./telemetry-sampling";
 
 export const OFFLINE_AFTER_SECONDS = 30;
 const NOTIFICATION_ID_PATTERN = /^ntf_[0-9a-f]{32}$/u;
@@ -122,8 +122,7 @@ export async function recordTelemetryNotifications(
 
   // Old/retransmitted packets must not recreate alarm/profile transitions.
   // Still allow an authenticated packet to clear a previous offline alert.
-  const replayed = previous.bootId === payload.bootId &&
-    previous.sequence !== null && payload.sequence <= previous.sequence;
+  const replayed = isStaleTelemetry(payload, previous);
   const created: string[] = [];
   const oldState = replayed ? null : parseTelemetry(previous.stateJson);
   const base = `${payload.deviceId}:${payload.bootId}:${payload.sequence}`;
