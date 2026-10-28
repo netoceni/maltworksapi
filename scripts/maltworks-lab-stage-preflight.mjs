@@ -12,8 +12,8 @@ const RECOVERED_PRODUCTION_D1_UUID = "a1bf5a75-1bec-4437-92fa-64e69c3da081";
 export function validateLabStageConfig(config) {
   if (!config || typeof config !== "object") throw new Error("Invalid staging config");
   if (config.name !== "maltworks-api-lab-staging" || config.main !== "src/index.ts" ||
-      config.workers_dev !== false) {
-    throw new Error("Staging must use a dedicated Worker and disable workers.dev");
+      config.workers_dev !== false || config.preview_urls !== false) {
+    throw new Error("Staging must use a dedicated Worker and disable workers.dev and preview URLs");
   }
   if (config.triggers?.crons?.length) {
     throw new Error("Lab staging cron is disabled until resource budgets are validated");
