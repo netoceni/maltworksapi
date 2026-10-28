@@ -1,6 +1,9 @@
 import { requireSystemAdmin } from "./admin";
 import { jsonResponse } from "./http";
-import { completedHistoryWatermark, HISTORY_FIVE_MINUTES, HISTORY_HOUR } from "./history-rollup";
+import {
+  completedHistoryWatermark, completeHistoryUntil,
+  HISTORY_FIVE_MINUTES, HISTORY_HOUR,
+} from "./history-rollup";
 
 /**
  * Read-only observability for system administrators.
@@ -34,8 +37,12 @@ export async function adminIntelligentHistoryHealth(
     };
   });
   return jsonResponse({
-    ok: true, status: summaries.some((row) => row.processedUntil === null)
-      ? "warming_up" : "available",
+    ok: true,
+    status: summaries.some((row) => row.processedUntil === null)
+      ? "warming_up"
+      : summaries.some((row) => row.processedUntil! <
+        completeHistoryUntil(now, row.resolutionSeconds as 300 | 3600))
+        ? "catching_up" : "available",
     rawRows: metrics?.rawRows ?? 0,
     fiveMinuteRows: metrics?.fiveMinuteRows ?? 0,
     hourlyRows: metrics?.hourlyRows ?? 0,
