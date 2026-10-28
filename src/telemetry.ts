@@ -8,7 +8,11 @@ import {
 } from "./notifications";
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
 import { publishNotificationsRealtime, publishTelemetryRealtime } from "./realtime";
-import { shouldPersistRealtimeFailover, shouldPersistTelemetry } from "./telemetry-sampling";
+import {
+  shouldPersistRealtimeFailover,
+  shouldPersistTelemetry,
+  telemetryPersistenceIntervalSeconds,
+} from "./telemetry-sampling";
 import { reconcileOtaFromTelemetry } from "./ota";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
@@ -95,7 +99,11 @@ export async function ingestTelemetry(
   }
 
   const previous = await previousDeviceState(env.DB, payload.deviceId);
-  const persistSample = shouldPersistTelemetry(payload, previous, now);
+  const samplingEnv = env as Env & { TELEMETRY_PERSIST_INTERVAL_SECONDS?: string };
+  const persistenceInterval = telemetryPersistenceIntervalSeconds(
+    samplingEnv.TELEMETRY_PERSIST_INTERVAL_SECONDS,
+  );
+  const persistSample = shouldPersistTelemetry(payload, previous, now, persistenceInterval);
   const payloadJson = JSON.stringify(payload);
   const statements = [
     env.DB.prepare(
