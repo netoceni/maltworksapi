@@ -87,6 +87,18 @@ describe("Intelligent History — D1 real SQL rollups", () => {
     ).bind(deviceId, start).first<{ samples: number; refrigeratorSum: number }>();
     expect(hour).toMatchObject({ samples: 3, refrigeratorSum: 40 });
 
+    // Re-running a completed slice with the raw source still present must
+    // overwrite, never double-count, the same UTC bucket.
+    await env.DB.prepare(
+      "UPDATE history_rollup_watermarks SET processed_until = ?1 WHERE resolution_seconds = 300",
+    ).bind(start).run();
+    await rollupHistoryResolution(env.DB, now, HISTORY_FIVE_MINUTES);
+    const recalculated = await env.DB.prepare(
+      "SELECT samples, refrigerator_sum AS refrigeratorSum FROM history_5min " +
+      "WHERE device_id = ?1 AND bucket_start = ?2",
+    ).bind(deviceId, start).first<{ samples: number; refrigeratorSum: number }>();
+    expect(recalculated).toMatchObject({ samples: 3, refrigeratorSum: 40 });
+
     // First archival slice covers the first old bucket but not the second one.
     expect((await pruneExpiredTelemetry(env.DB, now, 7, 250)).deletedRows).toBe(3);
     expect(await samplesRemaining()).toBe(2);
@@ -107,19 +119,5 @@ describe("Intelligent History — D1 real SQL rollups", () => {
     ).bind(deviceId, Math.floor(later / 300) * 300).first<{ samples: number }>();
     expect(archivedLater?.samples).toBe(1);
 
-    // Rebuild one completed range after resetting ONLY test progress.
-    // An UPSERT overwrites summary values instead of double-counting them.
-    await env.DB.prepare(
-      "UPDATE history_rollup_watermarks SET processed_until = ?1 WHERE resolution_seconds = 300",
-    ).bind(start).run();
-    await rollupHistoryResolution(env.DB, now, HISTORY_FIVE_MINUTES);
-    const sameBucket = await env.DB.prepare(
-      "SELECT samples, refrigerator_sum AS refrigeratorSum FROM history_5min " +
-      "WHERE device_id = ?1 AND bucket_start = ?2",
-    ).bind(deviceId, start).first<{ samples: number; refrigeratorSum: number }>();
-    // Raw samples already removed; a rebuild should not happen in production.
-    // The test confirms that the original summary remains if no raw source exists.
-    expect(sameBucket?.samples).toBe(3);
-    expect(sameBucket?.refrigeratorSum).toBe(40);
   });
 });
