@@ -53,11 +53,15 @@ export function shouldPersistTelemetry(
 ): boolean {
   if (intervalSeconds <= 0) return true;
   if (!previous || previous.stateReceivedAt === null || !previous.stateJson) return true;
+
+  // Any replay of a stored sequence must not cause fresh D1 writes,
+  // including while an offline notification is being recovered.
+  if (previous.bootId === payload.bootId &&
+      previous.sequence !== null &&
+      payload.sequence <= previous.sequence) return false;
+
   if (previous.offlineActive === 1) return true;
   if (previous.bootId !== payload.bootId) return true;
-
-  // A retransmission of the exact last persisted packet is not a new sample.
-  if (previous.sequence === payload.sequence) return false;
 
   if (!Number.isFinite(now) || now < previous.stateReceivedAt ||
       now - previous.stateReceivedAt >= intervalSeconds) return true;
