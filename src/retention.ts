@@ -9,7 +9,9 @@ export const DEFAULT_TELEMETRY_RETENTION_DAYS = 7;
 // Provides 57,600 raw-delete capacity/day, allowing headroom above
 // 25 devices x 1 minute (36,000) plus safety-event snapshots.
 // Requires Workers/D1 Paid before operating a 25-device fleet.
-export const RETENTION_BATCH_SIZE = 400;
+// 250 x 144 cleanups/day = 36,000 raw rows/day. The Free 10-controller
+// pilot generates ~4,800 stable snapshots/day (plus safety transitions).
+export const RETENTION_BATCH_SIZE = 250;
 export const D1_STORAGE_WARNING_BYTES = 350_000_000;
 const MAX_RETENTION_DAYS = 3650;
 
