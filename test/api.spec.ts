@@ -1110,6 +1110,33 @@ describe("Maltworks Cloud API 5.18.0", () => {
     const firmwareBody = await firmwareUpload.json() as { release: { id: string; sha256: string } };
     expect(firmwareBody.release.sha256).toMatch(/^[0-9a-f]{64}$/u);
 
+    // O objeto R2 tem chave exclusiva da publicacao. Assim, uma falha de INSERT
+    // em um upload concorrente nao pode apagar o firmware de outra release.
+    const storedFirmware = await env.DB.prepare(
+      "SELECT object_key AS objectKey FROM firmware_releases WHERE id = ?1",
+    ).bind(firmwareBody.release.id).first<{ objectKey: string }>();
+    expect(storedFirmware?.objectKey).toBe(
+      `releases/MaltworksController/ESP32/5.5.0/${firmwareBody.release.sha256}-${firmwareBody.release.id}.bin`,
+    );
+
+    const duplicateFirmware = await exports.default.fetch(
+      "https://api.maltworks.com.br/v1/admin/firmware",
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/octet-stream",
+          "X-Firmware-Product": "MaltworksController",
+          "X-Firmware-Version": "5.5.0",
+          "X-Firmware-Board-Family": "ESP32",
+          "X-Firmware-Phase": "Fase5_5_0",
+        },
+        body: firmwareImage,
+      },
+    );
+    expect(duplicateFirmware.status).toBe(409);
+    expect((await env.FIRMWARE.get(storedFirmware!.objectKey))?.size).toBe(64_000);
+
     const firmwareStatus = await exports.default.fetch(
       `https://api.maltworks.com.br/v1/devices/${deviceId}/firmware`,
       { headers: { Cookie: adminCookie } },
