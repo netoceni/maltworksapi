@@ -1,3 +1,5 @@
+import { completedHistoryWatermark } from "./history-rollup";
+
 /**
  * Retention for detailed telemetry only.
  * Accounts, credentials, device_latest_state, recipes, fermentation records
@@ -54,6 +56,14 @@ export async function pruneExpiredTelemetry(
     throw new Error("Telemetry pruning batch must be between 1 and 1000 rows.");
   }
   const cutoff = Math.floor(nowSeconds) - retentionDays * 86_400;
+  const archivedUntil = await completedHistoryWatermark(db);
+  // Never remove raw data before both 5-minute and hourly summaries cover it.
+  // A missing watermark (first deploy, delayed cron, D1 error) pauses deletion.
+  if (archivedUntil === null || archivedUntil <= 0) {
+    console.warn("Telemetry retention paused: intelligent history catch-up incomplete");
+    return { deletedRows: 0, sizeAfterBytes: null, rowsRead: null, rowsWritten: null };
+  }
+  const safeCutoff = Math.min(cutoff, archivedUntil);
   const { meta } = await db.prepare(
     `DELETE FROM telemetry
       WHERE id IN (
@@ -62,7 +72,7 @@ export async function pruneExpiredTelemetry(
          ORDER BY received_at ASC, id ASC
          LIMIT ?2
       )`,
-  ).bind(cutoff, limit).run();
+  ).bind(safeCutoff, limit).run();
   return {
     deletedRows: meta.changes ?? 0,
     sizeAfterBytes: Number.isFinite(meta.size_after) ? meta.size_after : null,
