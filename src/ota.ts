@@ -67,7 +67,10 @@ export async function adminUploadFirmware(
   const sha256 = await digestHex(binary);
   const id = randomId("fw");
   const now = epochSeconds();
-  const objectKey = `releases/${product}/${boardFamily}/${version}/${sha256}.bin`;
+  // Chave exclusiva por publicacao: um INSERT concorrente que falhar nao pode
+  // remover o objeto R2 utilizado por outra release com o mesmo SHA-256.
+  // Releases antigas continuam validas: o download usa object_key persistido no D1.
+  const objectKey = `releases/${product}/${boardFamily}/${version}/${sha256}-${id}.bin`;
   const duplicate = await env.DB.prepare(
     "SELECT id FROM firmware_releases WHERE product = ?1 AND version = ?2 AND board_family = ?3",
   ).bind(product, version, boardFamily).first();
