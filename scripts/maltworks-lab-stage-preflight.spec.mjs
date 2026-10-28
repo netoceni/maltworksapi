@@ -8,6 +8,7 @@ function stageConfig() {
     name: "maltworks-api-lab-staging",
     main: "src/index.ts",
     workers_dev: false,
+    preview_urls: false,
     vars: {
       APP_ORIGIN: "https://app-staging.maltworks.com.br",
       ADMIN_ORIGIN: "https://admin-staging.maltworks.com.br",
@@ -38,6 +39,8 @@ test("staging config rejects production Worker, public workers.dev and database"
   };
   change((c) => { c.name = "maltworks-api"; });
   change((c) => { c.workers_dev = true; });
+  change((c) => { c.preview_urls = true; });
+  change((c) => { delete c.preview_urls; });
   change((c) => { c.d1_databases[0].database_id = "a1bf5a75-1bec-4437-92fa-64e69c3da081"; });
   change((c) => { c.d1_databases[0].database_id = "REPLACE_WITH_NEW_STAGING_D1_UUID"; });
   change((c) => { c.d1_databases[0].database_name = "maltworks-recovery-20261027"; });
