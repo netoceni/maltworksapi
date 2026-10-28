@@ -366,6 +366,23 @@ export async function latestDeviceState(
       WHERE d.id = ?1 AND d.organization_id = ?2`,
   ).bind(deviceId, organizationId).first<{ stateJson: string; receivedAt: number }>();
   if (!row) throw new ApiError(404, "DEVICE_STATE_NOT_FOUND", "Estado do controlador nao encontrado.");
+  let receivedAt = row.receivedAt;
+  let state: unknown = JSON.parse(row.stateJson) as unknown;
+  try {
+    // HTTP refresh and WebSocket reconnection must not expose a snapshot up to
+    // 60 seconds old while the Controller is publishing live telemetry.
+    const realtime = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(deviceId);
+    if (realtime?.online && realtime.state && realtime.receivedAt !== null &&
+        realtime.receivedAt >= receivedAt) {
+      receivedAt = realtime.receivedAt;
+      state = realtime.state;
+    }
+  } catch (error) {
+    console.warn("Realtime latest state unavailable; using D1 snapshot", {
+      deviceId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
   const latestCommand = await latestCommandForDevice(
     env.DB,
     deviceId,
@@ -375,8 +392,8 @@ export async function latestDeviceState(
   return jsonResponse({
     ok: true,
     deviceId,
-    receivedAt: row.receivedAt,
-    state: JSON.parse(row.stateJson) as unknown,
+    receivedAt,
+    state,
     latestCommand,
     requestId,
   });
