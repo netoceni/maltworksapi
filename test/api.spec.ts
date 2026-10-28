@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import "../src/index";
-import { scanOfflineDevices } from "../src/notifications";
+import { recordOfflineDevice, scanOfflineDevices } from "../src/notifications";
 
 const deviceId = "MW-A1B2C3D4E5F6";
 const token = "0123456789abcdef".repeat(4);
@@ -1242,7 +1242,12 @@ describe("Maltworks Cloud API 5.18.0", () => {
 
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
       .bind(offlineCheckNow - 40, deviceId).run();
-    expect(await scanOfflineDevices(env)).toHaveLength(1);
+    // A D1 timestamp of 40s is not sufficient to declare offline:
+    // the real-time Durable Object still sees current packets.
+    expect(await scanOfflineDevices(env)).toEqual([]);
+    // Simulate the DO's 30-second offline alarm with the D1 fallback helper,
+    // then verify that the next authenticated packet clears the alert.
+    expect(await recordOfflineDevice(env, deviceId, offlineCheckNow)).toHaveLength(1);
     expect((await sendTelemetry(telemetry(105), replacementToken)).status).toBe(200);
 
     const notificationList = await exports.default.fetch(

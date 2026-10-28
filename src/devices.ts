@@ -184,9 +184,37 @@ export async function listDevices(request: Request, env: Env, requestId: string)
       WHERE d.organization_id = ?1
       ORDER BY d.favorite DESC, d.name COLLATE NOCASE ASC`,
   ).bind(organizationId).all();
-  const devices = rows.results.map((device) => ({
-    ...device,
-    favorite: Boolean(device.favorite),
+  const devices = await Promise.all(rows.results.map(async (device) => {
+    const result: Record<string, unknown> = { ...device, favorite: Boolean(device.favorite) };
+    if (device.status !== "active" || typeof device.id !== "string") return result;
+    try {
+      const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(device.id);
+      if (!live?.online || live.lastSeenAt < Number(device.lastSeenAt)) return result;
+      // Multiple telemetry packets can share a Unix second; equal timestamps
+      // must still allow the newer in-memory sample to replace D1 values.
+      if (live.receivedAt !== null && live.receivedAt < Number(device.stateReceivedAt)) {
+        return result;
+      }
+      result.lastSeenAt = live.lastSeenAt;
+      result.stateReceivedAt = live.receivedAt ?? result.stateReceivedAt;
+      if (live.state) {
+        result.refrigeratorValue = live.state.temperatures.refrigerator.value;
+        result.thermalWellValue = live.state.temperatures.thermalWell.value;
+        result.setpoint = live.state.control.setpoint;
+        result.controlState = live.state.control.state;
+        result.cooling = live.state.control.cooling ? 1 : 0;
+        result.heating = live.state.control.heating ? 1 : 0;
+        result.alarmsActive = live.state.alarms.active ? 1 : 0;
+        result.rssi = live.state.network.rssi;
+        result.firmwareVersion = live.state.firmware.version;
+      }
+    } catch (error) {
+      console.warn("Realtime device list fallback to D1", {
+        deviceId: device.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return result;
   }));
   return jsonResponse({ ok: true, devices, requestId });
 }
@@ -366,6 +394,23 @@ export async function latestDeviceState(
       WHERE d.id = ?1 AND d.organization_id = ?2`,
   ).bind(deviceId, organizationId).first<{ stateJson: string; receivedAt: number }>();
   if (!row) throw new ApiError(404, "DEVICE_STATE_NOT_FOUND", "Estado do controlador nao encontrado.");
+  let receivedAt = row.receivedAt;
+  let state: unknown = JSON.parse(row.stateJson) as unknown;
+  try {
+    // HTTP refresh and WebSocket reconnection must not expose a snapshot up to
+    // 60 seconds old while the Controller is publishing live telemetry.
+    const realtime = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(deviceId);
+    if (realtime?.online && realtime.state && realtime.receivedAt !== null &&
+        realtime.receivedAt >= receivedAt) {
+      receivedAt = realtime.receivedAt;
+      state = realtime.state;
+    }
+  } catch (error) {
+    console.warn("Realtime latest state unavailable; using D1 snapshot", {
+      deviceId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
   const latestCommand = await latestCommandForDevice(
     env.DB,
     deviceId,
@@ -375,8 +420,8 @@ export async function latestDeviceState(
   return jsonResponse({
     ok: true,
     deviceId,
-    receivedAt: row.receivedAt,
-    state: JSON.parse(row.stateJson) as unknown,
+    receivedAt,
+    state,
     latestCommand,
     requestId,
   });
@@ -462,15 +507,42 @@ export async function deviceHistory(
         LIMIT ?5`,
     ).bind(deviceId, since, bounds.minimum, bucketSeconds, maxPoints).all();
 
+    let points: unknown[] = rows.results;
+    if (rangeSeconds !== null && rangeSeconds <= 15 * 60) {
+      try {
+        // Merge the volatile 5-second DO samples with persisted D1 snapshots.
+        // Realtime wins when both sources share the same Unix second, and a
+        // hibernated DO simply falls back to the durable one-minute history.
+        const recent = await env.REALTIME.getByName(organizationId).getRecentTelemetry(
+          deviceId, since, maxPoints,
+        );
+        const merged = new Map<number, unknown>();
+        for (const point of rows.results) {
+          const timestamp = Number(point.receivedAt);
+          if (Number.isFinite(timestamp)) merged.set(timestamp, point);
+        }
+        for (const point of recent) merged.set(point.receivedAt, point);
+        points = [...merged.entries()]
+          .sort(([left], [right]) => right - left)
+          .slice(0, maxPoints)
+          .map(([, point]) => point);
+      } catch (error) {
+        console.warn("Recent realtime history unavailable; using D1 samples", {
+          deviceId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     return jsonResponse({
       ok: true,
       deviceId,
-      points: rows.results,
+      points,
       range: requestedRange,
       from: rangeSeconds === null ? bounds.minimum : since,
       to: rangeSeconds === null ? bounds.maximum : now,
       bucketSeconds,
-      totalPoints: bounds.count,
+      totalPoints: Math.max(bounds.count, points.length),
       requestId,
     });
   }

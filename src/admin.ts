@@ -27,7 +27,7 @@ export async function adminMe(request: Request, env: Env, requestId: string): Pr
 export async function adminOverview(request: Request, env: Env, requestId: string): Promise<Response> {
   await requireSystemAdmin(request, env);
   const onlineSince = Math.floor(Date.now() / 1000) - 30;
-  const [users, organizations, devices] = await Promise.all([
+  const [users, organizations, devices, stale] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) AS total FROM users").first<{ total: number }>(),
     env.DB.prepare("SELECT COUNT(*) AS total FROM organizations").first<{ total: number }>(),
     env.DB.prepare(
@@ -36,7 +36,12 @@ export async function adminOverview(request: Request, env: Env, requestId: strin
               SUM(CASE WHEN status = 'active' AND last_seen_at >= ?1 THEN 1 ELSE 0 END) AS online
          FROM devices`,
     ).bind(onlineSince).first<{ total: number; pending: number | null; online: number | null }>(),
+    env.DB.prepare(
+      "SELECT id AS deviceId, organization_id AS organizationId " +
+      "FROM devices WHERE status = 'active' AND organization_id IS NOT NULL AND last_seen_at < ?1",
+    ).bind(onlineSince).all<{ deviceId: string; organizationId: string }>(),
   ]);
+  const liveExtra = await countRealtimeOnline(env, stale.results);
 
   return jsonResponse({
     ok: true,
@@ -44,7 +49,7 @@ export async function adminOverview(request: Request, env: Env, requestId: strin
       users: users?.total ?? 0,
       organizations: organizations?.total ?? 0,
       devices: devices?.total ?? 0,
-      devicesOnline: devices?.online ?? 0,
+      devicesOnline: (devices?.online ?? 0) + liveExtra,
       devicesPending: devices?.pending ?? 0,
       onlineWindowSeconds: 30,
     },
@@ -86,6 +91,29 @@ export async function adminListUsers(request: Request, env: Env, requestId: stri
     }>(),
   ]);
 
+  // Device timestamps are sampled. Supplement admin counts with live DO
+  // presence for devices owned by the users on this page.
+  const realtimeByUser = new Map<string, number>();
+  if (rows.results.length > 0) {
+    const params = rows.results.map((_, index) => `?${index + 2}`).join(", ");
+    const stale = await env.DB.prepare(
+      `SELECT om.user_id AS userId, d.id AS deviceId, d.organization_id AS organizationId
+         FROM organization_members om
+         JOIN devices d ON d.organization_id = om.organization_id
+        WHERE d.status = 'active' AND d.last_seen_at < ?1
+          AND om.user_id IN (${params})`,
+    ).bind(onlineSince, ...rows.results.map((row) => row.id)).all<{
+      userId: string; deviceId: string; organizationId: string;
+    }>();
+    const presence = await Promise.all(stale.results.map(async (device) => ({
+      userId: device.userId,
+      online: (await countRealtimeOnline(env, [device])) === 1,
+    })));
+    for (const value of presence) {
+      if (value.online) realtimeByUser.set(value.userId, (realtimeByUser.get(value.userId) ?? 0) + 1);
+    }
+  }
+
   const totalUsers = total?.total ?? 0;
   return jsonResponse({
     ok: true,
@@ -94,7 +122,7 @@ export async function adminListUsers(request: Request, env: Env, requestId: stri
       createdAt: row.createdAt,
       organizationCount: row.organizationCount,
       deviceCount: row.deviceCount,
-      onlineDeviceCount: row.onlineDeviceCount,
+      onlineDeviceCount: row.onlineDeviceCount + (realtimeByUser.get(row.id) ?? 0),
     })),
     pagination: {
       page,
@@ -155,6 +183,25 @@ export async function requireSystemAdmin(request: Request, env: Env): Promise<Ad
     throw new ApiError(403, "SYSTEM_ADMIN_REQUIRED", "Acesso restrito a administradores do sistema.");
   }
   return { session, role: admin.role };
+}
+
+async function countRealtimeOnline(
+  env: Env,
+  devices: Array<{ deviceId: string; organizationId: string }>,
+): Promise<number> {
+  const results = await Promise.all(devices.map(async (device) => {
+    try {
+      const snapshot = await env.REALTIME.getByName(device.organizationId).getDeviceSnapshot(device.deviceId);
+      return snapshot?.online === true;
+    } catch (error) {
+      console.warn("Admin presence query failed; using sampled D1 fallback", {
+        deviceId: device.deviceId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }));
+  return results.filter(Boolean).length;
 }
 
 function accountCode(userId: string): string {

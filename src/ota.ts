@@ -139,10 +139,24 @@ export async function userRequestFirmwareUpdate(
   if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado nesta organizacao.");
   if (device.status !== "active") throw new ApiError(409, "DEVICE_NOT_ACTIVE", "O controlador nao esta ativo.");
   const now = epochSeconds();
-  if (now - device.lastSeenAt > 30) {
+  let lastSeenAt = device.lastSeenAt;
+  let profileActive = profileIsActive(device.stateJson);
+  try {
+    const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(deviceId);
+    if (live?.online && now - live.lastSeenAt <= 30) {
+      lastSeenAt = Math.max(lastSeenAt, live.lastSeenAt);
+      if (live.state) profileActive = live.state.profile.active;
+    }
+  } catch (error) {
+    console.warn("Realtime OTA preflight unavailable; using D1 fallback", {
+      deviceId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (now - lastSeenAt > 30) {
     throw new ApiError(409, "DEVICE_OFFLINE", "O controlador esta offline. Aguarde a reconexao.");
   }
-  if (profileIsActive(device.stateJson)) {
+  if (profileActive) {
     throw new ApiError(409, "PROFILE_ACTIVE", "Encerre a fermentacao ativa antes de atualizar o firmware.");
   }
   const release = await latestReadyRelease(env.DB);
@@ -188,7 +202,8 @@ export async function adminListOtaDevices(request: Request, env: Env, requestId:
   const onlineSince = epochSeconds() - 30;
   const rows = await env.DB.prepare(
     `SELECT d.id, d.name, d.status, d.firmware_version AS firmwareVersion,
-            d.last_seen_at AS lastSeenAt, o.name AS organizationName,
+            d.last_seen_at AS lastSeenAt, d.organization_id AS organizationId,
+            o.name AS organizationName,
             a.id AS assignmentId, a.target_version AS targetVersion,
             a.status AS otaStatus, a.progress AS otaProgress, a.error_message AS otaError
        FROM devices d
@@ -200,11 +215,27 @@ export async function adminListOtaDevices(request: Request, env: Env, requestId:
       WHERE d.status = 'active'
       ORDER BY d.last_seen_at DESC`,
   ).all<Record<string, unknown>>();
-  return jsonResponse({
-    ok: true,
-    devices: rows.results.map((row) => ({ ...row, online: Number(row.lastSeenAt) >= onlineSince })),
-    requestId,
-  });
+  const devices = await Promise.all(rows.results.map(async (row) => {
+    const { organizationId, ...visible } = row;
+    let online = Number(row.lastSeenAt) >= onlineSince;
+    if (typeof organizationId === "string" && typeof row.id === "string") {
+      try {
+        const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(row.id);
+        if (live) {
+          online = live.online;
+          visible.lastSeenAt = Math.max(Number(row.lastSeenAt) || 0, live.lastSeenAt);
+          if (live.state) visible.firmwareVersion = live.state.firmware.version;
+        }
+      } catch (error) {
+        console.warn("Admin OTA presence unavailable, using D1 fallback", {
+          deviceId: row.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return { ...visible, online };
+  }));
+  return jsonResponse({ ok: true, devices, requestId });
 }
 
 export async function adminListCampaigns(request: Request, env: Env, requestId: string): Promise<Response> {

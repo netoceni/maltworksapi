@@ -13,6 +13,8 @@ import { ApiError, type TelemetryPayload } from "./types";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/u;
 const DEVICE_TAG_PREFIX = "device:";
+const LIVE_HISTORY_SECONDS = 15 * 60;
+const LIVE_HISTORY_MAX_POINTS = 180; // 15 minutes at 5-second cadence.
 
 interface SocketAttachment {
   role: "browser" | "device";
@@ -24,7 +26,35 @@ interface DeviceIdentity {
   organizationId: string;
 }
 
+export interface RealtimeDeviceSnapshot {
+  lastSeenAt: number;
+  online: boolean;
+  receivedAt: number | null;
+  state: TelemetryPayload | null;
+}
+
+export interface RealtimeHistoryPoint {
+  receivedAt: number;
+  sentAt: number;
+  refrigeratorValue: number | null;
+  thermalWellValue: number | null;
+  setpoint: number;
+  controlState: string;
+  cooling: number;
+  heating: number;
+  alarmsActive: number;
+  rssi: number;
+}
+
 export class RealtimeHub extends DurableObject<Env> {
+  // No D1 writes for per-packet live state. Hibernation can clear this map;
+  // the persisted D1 snapshot remains the durable fallback.
+  private readonly latestTelemetry = new Map<string, { receivedAt: number; state: TelemetryPayload }>();
+  // A short volatile chart buffer replaces redundant 5-second D1 writes.
+  private readonly recentTelemetry = new Map<string, RealtimeHistoryPoint[]>();
+  // Reject delayed packets from a boot that was already superseded.
+  private readonly retiredBoots = new Map<string, string[]>();
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
@@ -80,8 +110,87 @@ export class RealtimeHub extends DurableObject<Env> {
   }
 
   async publishTelemetry(payload: TelemetryPayload, receivedAt: number): Promise<void> {
+    const current = this.latestTelemetry.get(payload.deviceId);
+    const retired = this.retiredBoots.get(payload.deviceId) ?? [];
+    const sameBoot = current?.state.bootId === payload.bootId;
+    const replayed = current && (
+      (sameBoot && payload.sequence <= current.state.sequence) ||
+      (!sameBoot && retired.includes(payload.bootId))
+    );
+
+    // A valid authenticated retry is still proof of network presence, but it
+    // must never roll back the dashboard or notify a stale safety transition.
+    if (replayed) {
+      await this.touchPresence(payload.deviceId, receivedAt);
+      return;
+    }
+
+    if (current && !sameBoot) {
+      retired.push(current.state.bootId);
+      if (retired.length > 4) retired.shift();
+      this.retiredBoots.set(payload.deviceId, retired);
+    }
+
+    this.latestTelemetry.set(payload.deviceId, { receivedAt, state: payload });
+    const historyPoint: RealtimeHistoryPoint = {
+      receivedAt,
+      sentAt: payload.sentAt,
+      refrigeratorValue: payload.temperatures.refrigerator.value,
+      thermalWellValue: payload.temperatures.thermalWell.value,
+      setpoint: payload.control.setpoint,
+      controlState: payload.control.state,
+      cooling: payload.control.cooling ? 1 : 0,
+      heating: payload.control.heating ? 1 : 0,
+      alarmsActive: payload.alarms.active ? 1 : 0,
+      rssi: payload.network.rssi,
+    };
+    const cutoff = receivedAt - LIVE_HISTORY_SECONDS;
+    const prior = this.recentTelemetry.get(payload.deviceId) ?? [];
+    const next = prior.filter((point) => point.receivedAt > cutoff && point.receivedAt !== receivedAt);
+    next.push(historyPoint);
+    if (next.length > LIVE_HISTORY_MAX_POINTS) next.splice(0, next.length - LIVE_HISTORY_MAX_POINTS);
+    this.recentTelemetry.set(payload.deviceId, next);
+
     await this.touchPresence(payload.deviceId, receivedAt);
-    this.broadcast({ type: "telemetry", deviceId: payload.deviceId, receivedAt, state: payload });
+    // Another HTTP request may have published a newer state during the await.
+    if (this.latestTelemetry.get(payload.deviceId)?.state === payload) {
+      this.broadcast({ type: "telemetry", deviceId: payload.deviceId, receivedAt, state: payload });
+    }
+  }
+
+  // Called only by authenticated Worker routes and the offline scanner.
+  // DO SQL stores presence, whereas the high-frequency payload lives in memory.
+  getDeviceSnapshot(deviceId: string): RealtimeDeviceSnapshot | null {
+    const row = this.ctx.storage.sql.exec<{
+      last_seen_at: number;
+      deadline_at: number;
+      online: number;
+    }>(
+      "SELECT last_seen_at, deadline_at, online FROM device_presence WHERE device_id = ?",
+      deviceId,
+    ).toArray()[0];
+    if (!row) return null;
+    const cached = this.latestTelemetry.get(deviceId);
+    return {
+      lastSeenAt: row.last_seen_at,
+      online: row.online === 1 && row.deadline_at > epochSeconds(),
+      receivedAt: cached?.receivedAt ?? null,
+      state: cached?.state ?? null,
+    };
+  }
+
+  /** Ephemeral high-resolution graph data. No D1 writes, no permanent promise. */
+  getRecentTelemetry(
+    deviceId: string,
+    since: number,
+    maximum = LIVE_HISTORY_MAX_POINTS,
+  ): RealtimeHistoryPoint[] {
+    const cutoff = Math.max(since, epochSeconds() - LIVE_HISTORY_SECONDS);
+    const limit = Math.max(1, Math.min(maximum, LIVE_HISTORY_MAX_POINTS));
+    return (this.recentTelemetry.get(deviceId) ?? [])
+      .filter((point) => point.receivedAt >= cutoff)
+      .slice(-limit)
+      .reverse();
   }
 
   publishNotificationsChanged(): void {
@@ -139,7 +248,9 @@ export class RealtimeHub extends DurableObject<Env> {
         presence.device_id,
         now,
       );
-      const notificationIds = await recordOfflineDevice(this.env, presence.device_id, now);
+      const notificationIds = await recordOfflineDevice(
+        this.env, presence.device_id, now, presence.last_seen_at,
+      );
       this.broadcast({
         type: "presence",
         deviceId: presence.device_id,
@@ -160,8 +271,8 @@ export class RealtimeHub extends DurableObject<Env> {
       `INSERT INTO device_presence (device_id, last_seen_at, deadline_at, online)
        VALUES (?, ?, ?, 1)
        ON CONFLICT(device_id) DO UPDATE SET
-         last_seen_at = excluded.last_seen_at,
-         deadline_at = excluded.deadline_at,
+         last_seen_at = MAX(last_seen_at, excluded.last_seen_at),
+         deadline_at = MAX(deadline_at, excluded.deadline_at),
          online = 1`,
       deviceId,
       lastSeenAt,

@@ -8,6 +8,12 @@ import {
 } from "./notifications";
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
 import { publishNotificationsRealtime, publishTelemetryRealtime } from "./realtime";
+import {
+  isStaleTelemetry,
+  shouldPersistRealtimeFailover,
+  shouldPersistTelemetry,
+  telemetryPersistenceIntervalSeconds,
+} from "./telemetry-sampling";
 import { reconcileOtaFromTelemetry } from "./ota";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
@@ -94,6 +100,12 @@ export async function ingestTelemetry(
   }
 
   const previous = await previousDeviceState(env.DB, payload.deviceId);
+  const samplingEnv = env as Env & { TELEMETRY_PERSIST_INTERVAL_SECONDS?: string };
+  const persistenceInterval = telemetryPersistenceIntervalSeconds(
+    samplingEnv.TELEMETRY_PERSIST_INTERVAL_SECONDS,
+  );
+  const stalePacket = isStaleTelemetry(payload, previous);
+  const persistSample = shouldPersistTelemetry(payload, previous, now, persistenceInterval);
   const payloadJson = JSON.stringify(payload);
   const statements = [
     env.DB.prepare(
@@ -155,11 +167,14 @@ export async function ingestTelemetry(
     ),
     env.DB.prepare(
       `UPDATE devices
-          SET last_seen_at = ?2,
-              firmware_version = ?3,
-              updated_at = ?2
+          SET last_seen_at = MAX(last_seen_at, ?2),
+              firmware_version = COALESCE(
+                (SELECT firmware_version FROM device_latest_state WHERE device_id = ?1),
+                firmware_version
+              ),
+              updated_at = MAX(updated_at, ?2)
         WHERE id = ?1`,
-    ).bind(payload.deviceId, now, payload.firmware.version),
+    ).bind(payload.deviceId, now),
     env.DB.prepare(
       `INSERT INTO device_latest_state (
         device_id, received_at, sent_at, boot_id, sequence,
@@ -181,7 +196,20 @@ export async function ingestTelemetry(
         alarms_active = excluded.alarms_active,
         rssi = excluded.rssi,
         firmware_version = excluded.firmware_version,
-        state_json = excluded.state_json`,
+        state_json = excluded.state_json
+      WHERE (
+        device_latest_state.boot_id = excluded.boot_id
+        AND excluded.sequence > device_latest_state.sequence
+      ) OR (
+        device_latest_state.boot_id <> excluded.boot_id
+        AND (
+          excluded.received_at > device_latest_state.received_at
+          OR (excluded.received_at = device_latest_state.received_at
+              AND excluded.sent_at > device_latest_state.sent_at)
+        )
+        AND (device_latest_state.sent_at = 0 OR excluded.sent_at = 0
+             OR excluded.sent_at >= device_latest_state.sent_at)
+      )`,
     ).bind(
       payload.deviceId,
       now,
@@ -201,13 +229,39 @@ export async function ingestTelemetry(
     ),
   ];
 
-  await env.DB.batch(statements);
+  // The latest-state upsert must run before the devices UPDATE: a late
+  // packet cannot roll back the saved state or firmware version.
+  const orderedStatements = [statements[0]!, statements[2]!, statements[1]!];
+
+  // Store periodic snapshots and transitions only. HTTP telemetry still
+  // authenticates, processes command results, raises alarms and reaches realtime.
+  if (persistSample) await env.DB.batch(orderedStatements);
   if (payload.commandResult) {
     await processCommandResult(env.DB, payload.deviceId, payload.commandResult, now);
   }
   const notificationIds = await recordTelemetryNotifications(env, payload, previous, now);
-  ctx.waitUntil(publishTelemetryRealtime(env, previous?.organizationId ?? null, payload, now));
-  ctx.waitUntil(reconcileOtaFromTelemetry(env, payload.deviceId, payload.firmware.version, now));
+
+  if (previous?.organizationId) {
+    try {
+      // Await the DO update so online/presence and the current state are
+      // available when the HTTP response reaches the Controller.
+      await publishTelemetryRealtime(env, previous.organizationId, payload, now);
+    } catch (error) {
+      console.error("Realtime telemetry publish failed", {
+        deviceId: payload.deviceId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      // Fail safe: a 30-second D1 heartbeat allows offline detection and
+      // remote command fallback, without reverting to 5-second D1 writes.
+      if (!persistSample && shouldPersistRealtimeFailover(previous, now)) {
+        await env.DB.batch(orderedStatements);
+      }
+    }
+  }
+
+  if (!stalePacket) {
+    ctx.waitUntil(reconcileOtaFromTelemetry(env, payload.deviceId, payload.firmware.version, now));
+  }
   if (notificationIds.length) {
     ctx.waitUntil(deliverNotificationEmails(env, notificationIds));
     ctx.waitUntil(publishNotificationsRealtime(env, previous?.organizationId ?? null));
