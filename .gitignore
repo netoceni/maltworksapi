@@ -4,3 +4,9 @@ node_modules/
 dist/
 coverage/
 *.log
+
+# Per-developer staging configuration and generated Lab artifacts
+wrangler.lab-staging.jsonc
+.env.lab-staging
+.dev.vars.lab-staging
+lab-*.jsonl
