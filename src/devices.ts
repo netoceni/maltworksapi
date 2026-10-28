@@ -185,7 +185,7 @@ export async function listDevices(request: Request, env: Env, requestId: string)
       ORDER BY d.favorite DESC, d.name COLLATE NOCASE ASC`,
   ).bind(organizationId).all();
   const devices = await Promise.all(rows.results.map(async (device) => {
-    const result = { ...device, favorite: Boolean(device.favorite) };
+    const result: Record<string, unknown> = { ...device, favorite: Boolean(device.favorite) };
     if (device.status !== "active" || typeof device.id !== "string") return result;
     try {
       const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(device.id);
