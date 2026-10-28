@@ -507,15 +507,42 @@ export async function deviceHistory(
         LIMIT ?5`,
     ).bind(deviceId, since, bounds.minimum, bucketSeconds, maxPoints).all();
 
+    let points: unknown[] = rows.results;
+    if (rangeSeconds !== null && rangeSeconds <= 15 * 60) {
+      try {
+        // Merge the volatile 5-second DO samples with persisted D1 snapshots.
+        // Realtime wins when both sources share the same Unix second, and a
+        // hibernated DO simply falls back to the durable one-minute history.
+        const recent = await env.REALTIME.getByName(organizationId).getRecentTelemetry(
+          deviceId, since, maxPoints,
+        );
+        const merged = new Map<number, unknown>();
+        for (const point of rows.results) {
+          const timestamp = Number(point.receivedAt);
+          if (Number.isFinite(timestamp)) merged.set(timestamp, point);
+        }
+        for (const point of recent) merged.set(point.receivedAt, point);
+        points = [...merged.entries()]
+          .sort(([left], [right]) => right - left)
+          .slice(0, maxPoints)
+          .map(([, point]) => point);
+      } catch (error) {
+        console.warn("Recent realtime history unavailable; using D1 samples", {
+          deviceId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     return jsonResponse({
       ok: true,
       deviceId,
-      points: rows.results,
+      points,
       range: requestedRange,
       from: rangeSeconds === null ? bounds.minimum : since,
       to: rangeSeconds === null ? bounds.maximum : now,
       bucketSeconds,
-      totalPoints: bounds.count,
+      totalPoints: Math.max(bounds.count, points.length),
       requestId,
     });
   }
