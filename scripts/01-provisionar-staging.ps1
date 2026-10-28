@@ -128,7 +128,14 @@ try {
                 throw "Config staging existe, mas D1 remoto nao foi encontrado. Verifique a conta ativa."
             }
             Confirmar-Texto "Criar novo banco D1 'maltworks-lab-staging' na conta exibida acima?" "CRIAR LAB"
-            Executar-Wrangler -Parametros @("d1","create",$DatabaseName)
+            # Never allow a resource creation command to edit wrangler.jsonc.
+            $ProdConfig = Join-Path $Root "wrangler.jsonc"
+            $ProdConfigHashBefore = (Get-FileHash -LiteralPath $ProdConfig -Algorithm SHA256).Hash
+            Executar-Wrangler -Parametros @("d1","create",$DatabaseName,"--no-update-config")
+            $ProdConfigHashAfter = (Get-FileHash -LiteralPath $ProdConfig -Algorithm SHA256).Hash
+            if ($ProdConfigHashBefore -ne $ProdConfigHashAfter) {
+                throw "ALERTA: wrangler.jsonc de producao foi modificado; revise antes de continuar."
+            }
             $Novos = @(Listar-D1 | Where-Object { $_.name -eq $DatabaseName })
             if ($Novos.Count -ne 1) { throw "Banco criado, mas nao apareceu no D1 list. Verifique manualmente." }
             $Uuid = Obter-Uuid $Novos[0]
