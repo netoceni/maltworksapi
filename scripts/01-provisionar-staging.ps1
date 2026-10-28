@@ -71,7 +71,8 @@ function Conferir-Staging {
         $Configuracao.preview_urls -ne $false) {
         throw "Worker de staging nao esta completamente privado."
     }
-    if ($null -ne $Configuracao.routes -and @($Configuracao.routes).Count -gt 0) {
+    if (($Configuracao.PSObject.Properties.Name -contains "routes") -and
+        $null -ne $Configuracao.routes -and @($Configuracao.routes).Count -gt 0) {
         throw "Este script so publica Worker SEM routes. Access sera configurado depois."
     }
     $UuidLocal = [string] $Configuracao.d1_databases[0].database_id
@@ -109,7 +110,7 @@ try {
         throw ("Branch incorreta: " + $Branch + ". Necessaria: " + $RequiredBranch)
     }
     Write-Host ("Maltworks Lab / Etapa: " + $Etapa) -ForegroundColor Cyan
-    Executar-Wrangler @("whoami")
+    Executar-Wrangler -Parametros @("whoami")
 
     switch ($Etapa) {
         "Preparar" {
@@ -127,7 +128,7 @@ try {
                 throw "Config staging existe, mas D1 remoto nao foi encontrado. Verifique a conta ativa."
             }
             Confirmar-Texto "Criar novo banco D1 'maltworks-lab-staging' na conta exibida acima?" "CRIAR LAB"
-            Executar-Wrangler @("d1","create",$DatabaseName)
+            Executar-Wrangler -Parametros @("d1","create",$DatabaseName)
             $Novos = @(Listar-D1 | Where-Object { $_.name -eq $DatabaseName })
             if ($Novos.Count -ne 1) { throw "Banco criado, mas nao apareceu no D1 list. Verifique manualmente." }
             $Uuid = Obter-Uuid $Novos[0]
@@ -147,15 +148,15 @@ try {
         "Migrar" {
             Conferir-Staging
             Write-Host "Apenas migracoes no banco NOVO de homologacao:" -ForegroundColor Yellow
-            Executar-Wrangler @("d1","migrations","list","DB","--remote","--config",$ConfigName)
+            Executar-Wrangler -Parametros @("d1","migrations","list","DB","--remote","--config",$ConfigName)
             Confirmar-Texto "Aplicar migracoes remotas 0001..0018 SOMENTE em $DatabaseName?" "MIGRAR LAB"
-            Executar-Wrangler @("d1","migrations","apply","DB","--remote","--config",$ConfigName)
+            Executar-Wrangler -Parametros @("d1","migrations","apply","DB","--remote","--config",$ConfigName)
             Write-Host "Migracoes de homologacao aplicadas. Proximo: -Etapa PublicarPrivado." -ForegroundColor Green
         }
         "PublicarPrivado" {
             Conferir-Staging
             Confirmar-Texto "Criar/atualizar Worker SEM workers.dev, sem preview URLs, cron ou routes?" "PUBLICAR PRIVADO"
-            Executar-Wrangler @("deploy","--config",$ConfigName)
+            Executar-Wrangler -Parametros @("deploy","--config",$ConfigName)
             Write-Host "Worker publicado sem rota publica intencional." -ForegroundColor Green
             Write-Host "Proximo: -Etapa Segredos. Nao adicione hostname antes de configurar Access."
         }
