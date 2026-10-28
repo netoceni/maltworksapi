@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import "../src/index";
-import { scanOfflineDevices } from "../src/notifications";
+import { recordOfflineDevice, scanOfflineDevices } from "../src/notifications";
 
 const deviceId = "MW-ABCDEF1234AB";
 const token = "abcdef0123456789".repeat(4);
@@ -174,6 +174,14 @@ describe("sampled HTTP telemetry / DO realtime / D1 integration", () => {
       error: { code: "FIRMWARE_NOT_AVAILABLE" },
     });
 
+    const otaInventory = await exports.default.fetch(base + "/v1/admin/ota/devices", {
+      headers: { Cookie: cookie },
+    });
+    expect(otaInventory.status).toBe(200);
+    expect(await otaInventory.json()).toMatchObject({
+      devices: [{ id: deviceId, online: true }],
+    });
+
     const setpoint = await exports.default.fetch(base + "/v1/devices/" + deviceId + "/commands/setpoint", {
       method: "POST",
       headers: { Cookie: cookie, "Content-Type": "application/json" },
@@ -215,5 +223,68 @@ describe("sampled HTTP telemetry / DO realtime / D1 integration", () => {
     expect(notificationBody.notifications.map((item) => item.type)).toEqual(expect.arrayContaining([
       "alarm_activated", "alarm_resolved",
     ]));
+
+    // An authenticated replay must not overwrite the latest D1 / live state.
+    const replay = sample(2);
+    replay.alarms = {
+      ...(replay.alarms as Record<string, unknown>),
+      active: true, unacknowledged: true, count: 1, summary: "Antigo",
+    };
+    expect((await send(replay)).status).toBe(200);
+    expect(await countSamples()).toBe(4);
+    const afterReplay = await env.REALTIME.getByName(org).getDeviceSnapshot(deviceId);
+    expect(afterReplay?.state?.sequence).toBe(6);
+
+    // A repeated packet is still a heartbeat: it must clear an offline alert
+    // without writing telemetry again or re-creating past alarm notifications.
+    const offlineAt = Math.floor(Date.now() / 1000);
+    await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
+      .bind(offlineAt - 50, deviceId).run();
+    expect(await recordOfflineDevice(env, deviceId, offlineAt)).toHaveLength(1);
+    expect((await send(result)).status).toBe(200);
+    expect(await countSamples()).toBe(4);
+    const activeOffline = await env.DB.prepare(
+      "SELECT active FROM notification_states WHERE device_id = ?1 AND type = 'offline'",
+    ).bind(deviceId).first<{ active: number }>();
+    expect(activeOffline?.active).toBe(0);
+
+    // After a reboot, delayed packets from the retired boot must not restore
+    // its old sensor state, change the firmware version or create new events.
+    const freshBoot = sample(1);
+    freshBoot.bootId = "F00DBABE";
+    freshBoot.sentAt = (result.sentAt as number) + 30;
+    expect((await send(freshBoot)).status).toBe(200);
+    expect(await countSamples()).toBe(5);
+    const latePreviousBoot = sample(7);
+    latePreviousBoot.sentAt = (result.sentAt as number) - 10;
+    expect((await send(latePreviousBoot)).status).toBe(200);
+    expect(await countSamples()).toBe(5);
+    const afterOldBoot = await env.REALTIME.getByName(org).getDeviceSnapshot(deviceId);
+    expect(afterOldBoot?.state?.bootId).toBe("F00DBABE");
+
+    // Both HTTP requests can compare the same stored predecessor. The
+    // conditional SQL upsert and the DO sequence guard must prevent rollback.
+    const frame2 = sample(2);
+    frame2.bootId = "F00DBABE";
+    frame2.sentAt = (freshBoot.sentAt as number) + 5;
+    frame2.control = {
+      ...(frame2.control as Record<string, unknown>),
+      state: "AQUECENDO", heating: true,
+    };
+    const frame3 = sample(3);
+    frame3.bootId = "F00DBABE";
+    frame3.sentAt = (freshBoot.sentAt as number) + 10;
+    frame3.control = {
+      ...(frame3.control as Record<string, unknown>),
+      state: "RESFRIANDO", cooling: true,
+    };
+    const concurrent = await Promise.all([send(frame2), send(frame3)]);
+    expect(concurrent.map((response) => response.status)).toEqual([200, 200]);
+    const saved = await env.DB.prepare(
+      "SELECT boot_id AS bootId, sequence, control_state AS controlState FROM device_latest_state WHERE device_id = ?1",
+    ).bind(deviceId).first<{ bootId: string; sequence: number; controlState: string }>();
+    expect(saved).toMatchObject({ bootId: "F00DBABE", sequence: 3, controlState: "RESFRIANDO" });
+    const current = await env.REALTIME.getByName(org).getDeviceSnapshot(deviceId);
+    expect(current?.state).toMatchObject({ bootId: "F00DBABE", sequence: 3 });
   });
 });
