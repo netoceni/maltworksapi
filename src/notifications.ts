@@ -2,6 +2,7 @@ import { requireSession, selectOrganization } from "./auth";
 import { randomId } from "./crypto";
 import { jsonResponse, readJson } from "./http";
 import { ApiError, type TelemetryPayload } from "./types";
+import { TELEMETRY_PERSIST_INTERVAL_SECONDS } from "./telemetry-sampling";
 
 export const OFFLINE_AFTER_SECONDS = 30;
 const NOTIFICATION_ID_PATTERN = /^ntf_[0-9a-f]{32}$/u;
@@ -14,6 +15,8 @@ interface PreviousDeviceState {
   organizationId: string | null;
   name: string;
   lastSeenAt: number;
+  stateReceivedAt: number | null;
+  offlineActive: number | null;
   bootId: string | null;
   sequence: number | null;
   stateJson: string | null;
@@ -99,9 +102,12 @@ export async function previousDeviceState(
 ): Promise<PreviousDeviceState | null> {
   return db.prepare(
     `SELECT d.organization_id AS organizationId, d.name, d.last_seen_at AS lastSeenAt,
-            s.boot_id AS bootId, s.sequence, s.state_json AS stateJson
+            s.received_at AS stateReceivedAt, s.boot_id AS bootId,
+            s.sequence, s.state_json AS stateJson,
+            COALESCE(ns.active, 0) AS offlineActive
        FROM devices d
        LEFT JOIN device_latest_state s ON s.device_id = d.id
+       LEFT JOIN notification_states ns ON ns.device_id = d.id AND ns.type = 'offline'
       WHERE d.id = ?1`,
   ).bind(deviceId).first<PreviousDeviceState>();
 }
@@ -221,7 +227,9 @@ export async function scanOfflineDevices(env: Env): Promise<string[]> {
       WHERE d.organization_id IS NOT NULL
         AND d.status = 'active'
         AND d.last_seen_at <= ?1`,
-  ).bind(now - OFFLINE_AFTER_SECONDS).all<{
+  // The DO alarm handles true 30s offline detection. D1 is sampled at 60s
+  // and must not trigger false alerts between periodic snapshots.
+  ).bind(now - OFFLINE_AFTER_SECONDS - TELEMETRY_PERSIST_INTERVAL_SECONDS).all<{
     id: string;
     organizationId: string;
     name: string;
@@ -234,7 +242,23 @@ export async function scanOfflineDevices(env: Env): Promise<string[]> {
   for (const device of rows.results) {
     if (device.offlineActive === 1) continue;
 
-    const notificationIds = await recordOfflineDevice(env, device.id, now);
+    // Re-check actual presence in the Durable Object, which receives every
+    // authenticated HTTP telemetry packet even when D1 snapshots are skipped.
+    let lastLiveAt: number | undefined;
+    try {
+      const live = await env.REALTIME.getByName(device.organizationId).getDeviceSnapshot(device.id);
+      if (live?.online) continue;
+      lastLiveAt = live?.lastSeenAt;
+      if (lastLiveAt !== undefined && now - lastLiveAt < OFFLINE_AFTER_SECONDS) continue;
+    } catch (error) {
+      // A 90-second D1 fallback remains available if DO RPC is down.
+      console.warn("Realtime presence lookup failed during offline scan", {
+        deviceId: device.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    const notificationIds = await recordOfflineDevice(env, device.id, now, lastLiveAt);
     created.push(...notificationIds);
     if (notificationIds.length) changedOrganizations.add(device.organizationId);
   }
@@ -246,6 +270,7 @@ export async function recordOfflineDevice(
   env: Env,
   deviceId: string,
   now = Math.floor(Date.now() / 1_000),
+  realtimeLastSeenAt?: number,
 ): Promise<string[]> {
   const device = await env.DB.prepare(
     `SELECT d.id, d.organization_id AS organizationId, d.name,
@@ -260,11 +285,11 @@ export async function recordOfflineDevice(
     lastSeenAt: number;
     offlineActive: number;
   }>();
-  if (!device || device.offlineActive === 1 || now - device.lastSeenAt < OFFLINE_AFTER_SECONDS) {
-    return [];
-  }
+  if (!device || device.offlineActive === 1) return [];
+  const lastSeenAt = Math.max(device.lastSeenAt, realtimeLastSeenAt ?? 0);
+  if (now - lastSeenAt < OFFLINE_AFTER_SECONDS) return [];
 
-  const eventKey = `${device.id}:offline:${device.lastSeenAt}`;
+  const eventKey = `${device.id}:offline:${lastSeenAt}`;
   await setState(env.DB, device.id, "offline", true, now, eventKey);
   return createOne(env.DB, {
     organizationId: device.organizationId,
@@ -275,7 +300,7 @@ export async function recordOfflineDevice(
     severity: "critical",
     title: `${device.name} está offline`,
     message: `Nenhuma comunicação recebida há mais de ${OFFLINE_AFTER_SECONDS} segundos.`,
-    data: { lastSeenAt: device.lastSeenAt },
+    data: { lastSeenAt },
   }, now);
 }
 
