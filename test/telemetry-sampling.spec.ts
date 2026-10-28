@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isStaleTelemetry,
   shouldPersistTelemetry,
   shouldPersistRealtimeFailover,
   TELEMETRY_PERSIST_INTERVAL_SECONDS,
@@ -122,6 +123,28 @@ describe("event-aware D1 sampling", () => {
       mutate(current);
       expect(shouldPersistTelemetry(current, previous, first.sentAt + 5)).toBe(true);
     }
+  });
+
+  it("rejects stale sequences even during offline recovery and ignores an older boot", () => {
+    const replay = copy();
+    expect(isStaleTelemetry(replay, persisted())).toBe(true);
+    expect(shouldPersistTelemetry(
+      replay, { ...persisted(), offlineActive: 1 }, first.sentAt + 100,
+    )).toBe(false);
+
+    const older = copy();
+    older.bootId = "00001111";
+    older.sequence = 50;
+    older.sentAt = first.sentAt - 5;
+    expect(isStaleTelemetry(older, persisted())).toBe(true);
+    expect(shouldPersistTelemetry(older, persisted(), first.sentAt + 5)).toBe(false);
+
+    const newBoot = copy();
+    newBoot.bootId = "99998888";
+    newBoot.sequence = 1;
+    newBoot.sentAt = first.sentAt + 5;
+    expect(isStaleTelemetry(newBoot, persisted())).toBe(false);
+    expect(shouldPersistTelemetry(newBoot, persisted(), first.sentAt + 5)).toBe(true);
   });
 
   it("does not write on every setpoint step of an active ramp", () => {
