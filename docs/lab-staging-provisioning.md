@@ -30,9 +30,23 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\01-provisionar
 # 3. Publicar Worker e DO SEM URL pública. Confirmação: PUBLICAR PRIVADO
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\01-provisionar-staging.ps1 -Etapa PublicarPrivado
 
-# 4. Gerar 3 segredos aleatórios de staging (não exibidos em tela)
+# 4. Gerar 3 segredos de staging; BOOTSTRAP_SECRET fica cifrado no perfil do Windows
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\01-provisionar-staging.ps1 -Etapa Segredos
 ```
+
+O passo `Segredos` mantém uma cópia **criptografada com Windows DPAPI**
+do `BOOTSTRAP_SECRET` em
+`%LOCALAPPDATA%\Maltworks\lab-staging-bootstrap.dpapi`, acessível
+somente para descriptografia sob a mesma identidade do Windows.
+Ela será usada para criar a **primeira conta superadministradora de
+homologação**, sem precisar registrar o valor secreto em texto no
+PowerShell/GitHub/chat. O script recusa executar `Segredos` uma segunda
+vez quando esse arquivo já existe para evitar rotação acidental.
+
+`PASSWORD_PEPPER` e `PASSWORD_RESET_SECRET` são gerados e enviados
+como segredos remotos sem salvar cópias locais. **Não desinstale nem
+apague o perfil local do Windows antes de concluir o cadastro inicial**;
+arquivos DPAPI dependem do usuário que os criptografou.
 
 O `wrangler.lab-staging.jsonc` local fica ignorado pelo Git e
 **não modifica** o `wrangler.jsonc` da produção. Antes de qualquer
