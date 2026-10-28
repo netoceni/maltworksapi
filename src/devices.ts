@@ -184,9 +184,32 @@ export async function listDevices(request: Request, env: Env, requestId: string)
       WHERE d.organization_id = ?1
       ORDER BY d.favorite DESC, d.name COLLATE NOCASE ASC`,
   ).bind(organizationId).all();
-  const devices = rows.results.map((device) => ({
-    ...device,
-    favorite: Boolean(device.favorite),
+  const devices = await Promise.all(rows.results.map(async (device) => {
+    const result = { ...device, favorite: Boolean(device.favorite) };
+    if (device.status !== "active" || typeof device.id !== "string") return result;
+    try {
+      const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(device.id);
+      if (!live?.online || live.lastSeenAt <= Number(device.lastSeenAt)) return result;
+      result.lastSeenAt = live.lastSeenAt;
+      result.stateReceivedAt = live.receivedAt ?? result.stateReceivedAt;
+      if (live.state) {
+        result.refrigeratorValue = live.state.temperatures.refrigerator.value;
+        result.thermalWellValue = live.state.temperatures.thermalWell.value;
+        result.setpoint = live.state.control.setpoint;
+        result.controlState = live.state.control.state;
+        result.cooling = live.state.control.cooling ? 1 : 0;
+        result.heating = live.state.control.heating ? 1 : 0;
+        result.alarmsActive = live.state.alarms.active ? 1 : 0;
+        result.rssi = live.state.network.rssi;
+        result.firmwareVersion = live.state.firmware.version;
+      }
+    } catch (error) {
+      console.warn("Realtime device list fallback to D1", {
+        deviceId: device.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return result;
   }));
   return jsonResponse({ ok: true, devices, requestId });
 }
