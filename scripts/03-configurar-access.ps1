@@ -8,7 +8,6 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-fA-F0-9]{32}$')]
     [string] $AccountId,
-    [ValidatePattern('^[^@\s]+@[^@\s]+\.[^@\s]+$')]
     [string] $AdminEmail = ""
 )
 
@@ -145,8 +144,126 @@ try {
         @($Cfg.routes).Count -gt 0) {
         throw "A rota ja existe na configuracao local. Audite antes de continuar."
     }
-    if ($Etapa -eq "Criar" -and [string]::IsNullOrWhiteSpace($AdminEmail)) {
-        throw "Para criar Access, informe -AdminEmail com seu e-mail autorizado."
+    if ($Etapa -eq "Criar" -and ($AdminEmail -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+
+
+    Write-Host ("Etapa: " + $Etapa + " / Host: " + $HostName + " / Conta: " + $AccountId)
+    Write-Host "O token da API sera lido sem eco e NAO sera salvo."
+    $Seguro = Read-Host "Cole seu API Token Cloudflare com permissoes Access" -AsSecureString
+    $Ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Seguro)
+    try {
+        $script:ApiToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Ptr)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Ptr)
+    }
+    if ([string]::IsNullOrWhiteSpace($script:ApiToken)) { throw "Token API vazio." }
+
+    $Apps = @(Listar-Aplicacoes)
+    $Encontradas = @(Selecionar-Aplicacao $Apps)
+    $Vault = Carregar-Vault
+
+    if ($Etapa -eq "Checar") {
+        [void](Requisicao-Access "GET" "/service_tokens?per_page=1")
+        Write-Host "Permissoes de LEITURA Access confirmadas. A criacao exige permissoes de escrita." -ForegroundColor Green
+        if ($Encontradas.Count -eq 0) {
+            Write-Host ("Nenhuma aplicacao Access encontrada para " + $HostName)
+        } else {
+            Write-Host ("Aplicacao Access existente: " + $Encontradas[0].id)
+        }
+        if ($null -ne $Vault) { Write-Host "Credencial de Lab ja armazenada em DPAPI." }
+    } elseif ($Etapa -eq "Criar") {
+        if ($Encontradas.Count -gt 0) {
+            throw "Access ja existe neste hostname/nome; nada sera sobrescrito. Use -Etapa Auditar."
+        }
+        $TokenId = ""
+        if ($null -eq $Vault) {
+            # Validate Windows DPAPI and local write permissions before remote mutation.
+            [void](Encriptar "lab-staging-dpapi-selftest")
+            if (-not (Test-Path -LiteralPath $VaultDir)) {
+                New-Item -ItemType Directory -Path $VaultDir -Force | Out-Null
+            }
+            $TesteLocal = Join-Path $VaultDir "lab-access-write-test.tmp"
+            try { [IO.File]::WriteAllText($TesteLocal,"ok") } finally {
+                if (Test-Path -LiteralPath $TesteLocal) { Remove-Item -LiteralPath $TesteLocal -Force }
+            }
+            Write-Host "Proposta: gerar token de servico com validade de 30 dias e Access para e-mail individual."
+            Write-Host "Nao cria nem altera DNS, Workers, D1 ou rotas."
+            $Confirm = Read-Host "Digite CRIAR ACCESS para autorizar"
+            if ($Confirm -cne "CRIAR ACCESS") { throw "Operacao cancelada." }
+            $T = (Requisicao-Access "POST" "/service_tokens" @{
+                name = $ServiceTokenName
+                duration = "720h"
+                enabled = $true
+            }).result
+            if ([string]::IsNullOrWhiteSpace($T.id) -or
+                [string]::IsNullOrWhiteSpace($T.client_id) -or
+                [string]::IsNullOrWhiteSpace($T.client_secret)) {
+                throw "Resposta de Service Token incompleta. Nao crie a rota."
+            }
+            $TokenId = $T.id
+            # Store client secret immediately: Cloudflare exposes it only once.
+            $Guardado = [ordered]@{
+                account_id = $AccountId
+                hostname = $HostName
+                service_token_id = $TokenId
+                admin_email = $AdminEmail
+                client_id_dpapi = (Encriptar $T.client_id)
+                client_secret_dpapi = (Encriptar $T.client_secret)
+            } | ConvertTo-Json -Depth 10
+            [IO.File]::WriteAllText(
+                $VaultFile, $Guardado, (New-Object System.Text.UTF8Encoding($false))
+            )
+            $T = $null
+            Write-Host ("Service Token criado. Credenciais DPAPI: " + $VaultFile) -ForegroundColor Green
+        } else {
+            if ($Vault.admin_email -ne $AdminEmail) {
+                throw "E-mail autorizado difere daquele registrado no vault DPAPI."
+            }
+            $TokenId = $Vault.service_token_id
+            Write-Host "Recuperacao: reusando token de servico ja guardado (sem nova rotacao)."
+        }
+
+        $Payload = @{
+            name = $AppName
+            type = "self_hosted"
+            domain = $HostName
+            app_launcher_visible = $false
+            session_duration = "8h"
+            policies = @(
+                @{
+                    name = "Lab API - Service Auth"
+                    precedence = 1
+                    decision = "non_identity"
+                    include = @(@{ service_token = @{ token_id = $TokenId } })
+                },
+                @{
+                    name = "Lab API - Developer Email"
+                    precedence = 2
+                    decision = "allow"
+                    include = @(@{ email = @{ email = $AdminEmail } })
+                }
+            )
+        }
+        $NovaApp = (Requisicao-Access "POST" "/apps" $Payload).result
+        if ([string]::IsNullOrWhiteSpace($NovaApp.id)) {
+            throw "Aplicacao criada sem ID de resposta: audite pelo painel, nao habilite rota."
+        }
+        Write-Host ("Access criado; ID: " + $NovaApp.id) -ForegroundColor Green
+        $AppDetalhe = (Requisicao-Access "GET" ("/apps/" + $NovaApp.id)).result
+        Verificar-Aplicacao $AppDetalhe $TokenId $AdminEmail
+        Write-Host "PROTECAO CONFIGURADA. A rota/DNS continua desativada." -ForegroundColor Green
+    } elseif ($Etapa -eq "Auditar") {
+        if ($Encontradas.Count -ne 1 -or $null -eq $Vault) {
+            throw "Aplicacao ou credenciais DPAPI ausentes; nao habilite rota."
+        }
+        $Detalhe = (Requisicao-Access "GET" ("/apps/" + $Encontradas[0].id)).result
+        Verificar-Aplicacao $Detalhe $Vault.service_token_id $Vault.admin_email
+    }
+} finally {
+    $script:ApiToken = $null
+    Pop-Location
+}
+)) {
+        throw "Para criar Access, informe -AdminEmail com um endereco de e-mail valido."
     }
 
     Write-Host ("Etapa: " + $Etapa + " / Host: " + $HostName + " / Conta: " + $AccountId)
