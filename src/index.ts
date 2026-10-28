@@ -17,6 +17,7 @@ import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http"
 import { ingestTelemetry } from "./telemetry";
 import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
 import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
+import { aggregatedDeviceHistory } from "./history-query";
 import { runD1DailyHealth, shouldRunD1DailyHealth } from "./d1-health";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
 import {
@@ -328,6 +329,10 @@ async function route(
   }
   if (request.method === "DELETE" && deviceMatch?.[1]) {
     return deleteDevice(request, env, requestId, deviceMatch[1]);
+  }
+  const aggregateHistoryMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/history\/summary$/u.exec(path);
+  if (request.method === "GET" && aggregateHistoryMatch?.[1]) {
+    return aggregatedDeviceHistory(request, env, requestId, aggregateHistoryMatch[1]);
   }
   const historyMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/telemetry$/u.exec(path);
   if (request.method === "GET" && historyMatch?.[1]) {
