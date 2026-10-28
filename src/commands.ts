@@ -464,7 +464,23 @@ async function deviceContext(
   if (device.status !== "active") {
     throw new ApiError(409, "DEVICE_NOT_ACTIVE", "O controlador nao esta ativo.");
   }
-  if (now - device.lastSeenAt > ONLINE_WINDOW_SECONDS) {
+
+  let lastSeenAt = device.lastSeenAt;
+  let liveStateJson = device.stateJson;
+  try {
+    const realtime = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(normalizedDeviceId);
+    if (realtime?.online && now - realtime.lastSeenAt <= ONLINE_WINDOW_SECONDS) {
+      lastSeenAt = Math.max(lastSeenAt, realtime.lastSeenAt);
+      if (realtime.state) liveStateJson = JSON.stringify(realtime.state);
+    }
+  } catch (error) {
+    console.warn("Realtime presence unavailable during command validation", {
+      deviceId: normalizedDeviceId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (now - lastSeenAt > ONLINE_WINDOW_SECONDS) {
     throw new ApiError(409, "DEVICE_OFFLINE", "O controlador esta offline. Aguarde a reconexao.");
   }
   return {
@@ -472,7 +488,7 @@ async function deviceContext(
     organizationId,
     deviceId: normalizedDeviceId,
     now,
-    profile: profileState(device.stateJson),
+    profile: profileState(liveStateJson),
   };
 }
 
