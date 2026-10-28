@@ -1,4 +1,5 @@
-import { env } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
+import "../src/index";
 import { describe, expect, it } from "vitest";
 import {
   completedHistoryWatermark, rollupHistoryResolution,
@@ -6,7 +7,7 @@ import {
 } from "../src/history-rollup";
 import { pruneExpiredTelemetry } from "../src/retention";
 
-const now = 1_800_000_000;
+const now = Math.floor(Date.now() / 1000);
 const day = 86_400;
 const deviceId = "MW-FA0102030405";
 const start = Math.floor((now - 8 * day) / 3600) * 3600;
