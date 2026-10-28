@@ -1268,7 +1268,7 @@ describe("Maltworks Cloud API 5.19.0", () => {
     expect(prematureOfflineNotification?.count).toBe(0);
 
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
-      .bind(offlineCheckNow - 40, deviceId).run();
+      .bind(offlineCheckNow - 110, deviceId).run();
     // A D1 timestamp of 40s is not sufficient to declare offline:
     // the real-time Durable Object still sees current packets.
     expect(await scanOfflineDevices(env)).toEqual([]);
@@ -1298,7 +1298,7 @@ describe("Maltworks Cloud API 5.19.0", () => {
       "firmware_available",
     ]));
     expect(notificationBody.notifications.find((item) => item.type === "device_offline")?.message)
-      .toContain("mais de 30 segundos");
+      .toContain("mais de 90 segundos");
 
     const defaultPreferences = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/notifications/preferences",

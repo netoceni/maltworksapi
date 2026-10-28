@@ -7,7 +7,7 @@ const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
 const RECIPE_ID_PATTERN = /^rcp_[0-9a-f]{32}$/;
 const COMMAND_ID_PATTERN = /^cmd_[0-9a-f]{32}$/;
 const COMMAND_TTL_SECONDS = 120;
-const ONLINE_WINDOW_SECONDS = 30;
+const ONLINE_WINDOW_SECONDS = 90;
 
 type CommandStatus = "pending" | "delivered" | "applied" | "rejected" | "expired";
 type CommandType =

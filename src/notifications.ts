@@ -4,7 +4,8 @@ import { jsonResponse, readJson } from "./http";
 import { ApiError, type TelemetryPayload } from "./types";
 import { isStaleTelemetry, TELEMETRY_PERSIST_INTERVAL_SECONDS } from "./telemetry-sampling";
 
-export const OFFLINE_AFTER_SECONDS = 30;
+// Allows up to two missed 30-second HTTP/WS updates plus network jitter.
+export const OFFLINE_AFTER_SECONDS = 90;
 const NOTIFICATION_ID_PATTERN = /^ntf_[0-9a-f]{32}$/u;
 const CATEGORIES = ["device", "sensor", "alarm", "profile", "command"] as const;
 
@@ -229,7 +230,7 @@ export async function scanOfflineDevices(env: Env): Promise<string[]> {
       WHERE d.organization_id IS NOT NULL
         AND d.status = 'active'
         AND d.last_seen_at <= ?1`,
-  // The DO alarm handles true 30s offline detection. D1 is sampled at 60s
+  // The DO alarm detects 90s offline. D1 snapshots are spaced by 180s
   // and must not trigger false alerts between periodic snapshots.
   ).bind(now - OFFLINE_AFTER_SECONDS - TELEMETRY_PERSIST_INTERVAL_SECONDS).all<{
     id: string;

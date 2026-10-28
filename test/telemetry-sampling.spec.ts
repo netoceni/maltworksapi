@@ -56,15 +56,15 @@ function persisted(last = first, time = 1_800_000_000): LastPersistedTelemetry {
 
 describe("event-aware D1 sampling", () => {
   it("accepts explicit safe sampling settings and a legacy rollback option", () => {
-    expect(telemetryPersistenceIntervalSeconds(undefined)).toBe(60);
+    expect(telemetryPersistenceIntervalSeconds(undefined)).toBe(180);
     expect(telemetryPersistenceIntervalSeconds("60")).toBe(60);
     expect(telemetryPersistenceIntervalSeconds("30")).toBe(30);
     expect(telemetryPersistenceIntervalSeconds("120")).toBe(120);
     expect(telemetryPersistenceIntervalSeconds("300")).toBe(300);
     expect(telemetryPersistenceIntervalSeconds("0")).toBe(0);
-    expect(telemetryPersistenceIntervalSeconds("5")).toBe(60);
-    expect(telemetryPersistenceIntervalSeconds("600")).toBe(60);
-    expect(telemetryPersistenceIntervalSeconds("invalid")).toBe(60);
+    expect(telemetryPersistenceIntervalSeconds("5")).toBe(180);
+    expect(telemetryPersistenceIntervalSeconds("600")).toBe(180);
+    expect(telemetryPersistenceIntervalSeconds("invalid")).toBe(180);
   });
 
   it("writes first packet, periodic sample and reboot, not ordinary 5s packets", () => {
@@ -80,8 +80,9 @@ describe("event-aware D1 sampling", () => {
     expect(shouldPersistTelemetry(current, null, first.sentAt + 5)).toBe(true);
     expect(shouldPersistTelemetry(current, persisted(), first.sentAt + 5)).toBe(false);
     expect(shouldPersistTelemetry(current, persisted(), first.sentAt + 59)).toBe(false);
-    expect(shouldPersistTelemetry(current, persisted(), first.sentAt + 60)).toBe(true);
-    expect(TELEMETRY_PERSIST_INTERVAL_SECONDS).toBe(60);
+    expect(shouldPersistTelemetry(current, persisted(), first.sentAt + 60)).toBe(false);
+    expect(shouldPersistTelemetry(current, persisted(), first.sentAt + 180)).toBe(true);
+    expect(TELEMETRY_PERSIST_INTERVAL_SECONDS).toBe(180);
 
     const booted = copy(current);
     booted.bootId = "87654321";
@@ -158,7 +159,7 @@ describe("event-aware D1 sampling", () => {
     updated.profile.remainingSeconds = 3500;
     updated.control.setpoint = 18.01;
     expect(shouldPersistTelemetry(updated, persisted(initial), first.sentAt + 5)).toBe(false);
-    expect(shouldPersistTelemetry(updated, persisted(initial), first.sentAt + 60)).toBe(true);
+    expect(shouldPersistTelemetry(updated, persisted(initial), first.sentAt + 180)).toBe(true);
   });
 
   it("fails safe to persistence on corrupt/unknown previous payload or recovery", () => {
@@ -171,11 +172,12 @@ describe("event-aware D1 sampling", () => {
   });
 
   it("rate-limits D1 failover if the Durable Object becomes unavailable", () => {
-    expect(TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS).toBe(30);
+    expect(TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS).toBe(180);
     expect(shouldPersistRealtimeFailover(null, first.sentAt)).toBe(true);
     expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 5)).toBe(false);
     expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 29)).toBe(false);
-    expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 30)).toBe(true);
+    expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 30)).toBe(false);
+    expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 180)).toBe(true);
     expect(shouldPersistRealtimeFailover(persisted(), first.sentAt - 1)).toBe(true);
   });
 
