@@ -12,6 +12,7 @@
 - `GET /v1/devices/:id/history/summary?range=2592000&maxPoints=720` é um endpoint novo, autenticado e isolado por organização. O endpoint antigo `/telemetry` permanece inalterado.
 - Até 90 dias a fonte é `history_5min`; acima de 90 dias até 365 dias, `history_hourly`. Os períodos de exibição são reagrupados para no máximo 1000 pontos, com média ponderada pelo número de amostras, e incluem `bucketSeconds`, `sourceResolutionSeconds`, `completeThrough` e `status` (`warming_up`, `catching_up`, `available`).
 - O Cloud 5.19 foi preparado em [PR #11](https://github.com/netoceni/maltworkspanel/pull/11), **sem deploy**: períodos 7/30/90 dias e um ano, gráfico com resolução indicada, CSV de agregados sem apresentar contagens como falsos ON/OFF.
+- `GET /v1/admin/history/health` é um diagnóstico **somente leitura para administradores do sistema**: informa quantidade total de registros brutos/agregados, progresso e atraso de cada resolução, cobertura segura da retenção e estado do backfill. Não expõe IDs de dispositivos ou organizações.
 
 ## Exemplo da origem dos dados
 
