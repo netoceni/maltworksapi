@@ -18,6 +18,7 @@ import { ingestTelemetry } from "./telemetry";
 import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
 import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
 import { aggregatedDeviceHistory } from "./history-query";
+import { adminIntelligentHistoryHealth } from "./history-health";
 import { runD1DailyHealth, shouldRunD1DailyHealth } from "./d1-health";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
 import {
@@ -192,6 +193,9 @@ async function route(
   }
   if (request.method === "GET" && path === "/v1/admin/me") {
     return adminMe(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/history/health") {
+    return adminIntelligentHistoryHealth(request, env, requestId);
   }
   if (request.method === "GET" && path === "/v1/admin/overview") {
     return adminOverview(request, env, requestId);
