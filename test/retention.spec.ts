@@ -26,6 +26,9 @@ describe("raw telemetry retention", () => {
     const db = {
       prepare(statement: string) {
         calls++;
+        if (statement.includes("history_rollup_watermarks")) {
+          return { first: async () => ({ completedUntil: 1_800_000_000, resolutions: 2 }) };
+        }
         sql = statement;
         return {
           bind(...values: unknown[]) {
@@ -55,7 +58,7 @@ describe("raw telemetry retention", () => {
     expect(sql).toContain("received_at < ?1");
     expect(sql).toContain("LIMIT ?2");
     expect(args).toEqual([1_800_000_000 - 7 * 86_400, 250]);
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
 
     expect(await pruneExpiredTelemetry(db, 1_800_000_000, 0)).toEqual({
       deletedRows: 0,
@@ -63,14 +66,17 @@ describe("raw telemetry retention", () => {
       rowsRead: null,
       rowsWritten: null,
     });
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     await expect(pruneExpiredTelemetry(db, 1_800_000_000, 7, 1001)).rejects.toThrow();
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
   });
 
   it("warns when D1 storage or pruning batch approaches capacity", async () => {
     const db = {
-      prepare() {
+      prepare(statement: string) {
+        if (statement.includes("history_rollup_watermarks")) {
+          return { first: async () => ({ completedUntil: 1_800_000_000, resolutions: 2 }) };
+        }
         return {
           bind() {
             return {
