@@ -189,7 +189,12 @@ export async function listDevices(request: Request, env: Env, requestId: string)
     if (device.status !== "active" || typeof device.id !== "string") return result;
     try {
       const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(device.id);
-      if (!live?.online || live.lastSeenAt <= Number(device.lastSeenAt)) return result;
+      if (!live?.online || live.lastSeenAt < Number(device.lastSeenAt)) return result;
+      // Multiple telemetry packets can share a Unix second; equal timestamps
+      // must still allow the newer in-memory sample to replace D1 values.
+      if (live.receivedAt !== null && live.receivedAt < Number(device.stateReceivedAt)) {
+        return result;
+      }
       result.lastSeenAt = live.lastSeenAt;
       result.stateReceivedAt = live.receivedAt ?? result.stateReceivedAt;
       if (live.state) {
