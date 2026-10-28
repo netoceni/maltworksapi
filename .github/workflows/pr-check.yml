@@ -27,4 +27,4 @@ jobs:
       - name: Run tests against isolated D1
         run: npm test
       - name: Validate Maltworks Lab offline emulator
-        run: node --test scripts/maltworks-lab.spec.mjs scripts/maltworks-lab-transport.spec.mjs
+        run: node --test scripts/maltworks-lab*.spec.mjs
