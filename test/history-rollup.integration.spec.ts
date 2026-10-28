@@ -190,9 +190,11 @@ describe("Intelligent History — D1 real SQL rollups", () => {
     expect(hourly.status).toBe(200);
     const hourlyData = await hourly.json() as {
       sourceResolutionSeconds: number;
+      bucketSeconds: number;
       points: Array<{ bucketStart: number; samples: number }>;
     };
     expect(hourlyData.sourceResolutionSeconds).toBe(3600);
-    expect(hourlyData.points.find((point) => point.bucketStart === start)?.samples).toBe(3);
+    const groupedStart = Math.floor(start / hourlyData.bucketSeconds) * hourlyData.bucketSeconds;
+    expect(hourlyData.points.find((point) => point.bucketStart === groupedStart)?.samples).toBe(3);
   });
 });
