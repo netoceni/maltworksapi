@@ -172,6 +172,59 @@ A versão inicial da configuração **não possui routes** e usa
 `workers_dev:false`: o Worker é criado **sem URL pública intencional**.
 Não expor o serviço até confirmar o controle de acesso.
 
+## E.1. Access pelo PowerShell, sem criar rota publica
+
+O OAuth do Wrangler costuma permitir Workers/D1 mas **nao inclui necessariamente**
+o escopo administrativo para Cloudflare Access. Para criar app e service token
+por API, em https://dash.cloudflare.com/profile/api-tokens crie um
+**token customizado e temporario**, restrito a conta Cloudflare desejada,
+com as seguintes permissoes Account:
+
+- Access: Apps and Policies — Edit
+- Access: Service Tokens — Edit
+
+Nao conceder DNS Edit, D1 Edit, Workers Edit ou outras permissoes ao
+token de Access. Caso o painel exija, ativar o Zero Trust antes de tentar
+a API. **Nao cole o token no chat e nao o grave em arquivo.**
+
+No checkout da homologacao:
+
+\`\`\`powershell
+Set-Location "$HOME\maltworksapi-staging"
+git pull --ff-only origin test/staging-history-lab-free10-20261028
+
+# Somente LEITURA: validar autenticacao Access e verificar apps existentes.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\03-configurar-access.ps1 \`
+  -Etapa Checar -AccountId "4e8c08f70722d344cf39c362a110d706"
+
+# SOMENTE depois da checagem e aprovacao: criar Access e service token.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\03-configurar-access.ps1 \`
+  -Etapa Criar -AccountId "4e8c08f70722d344cf39c362a110d706" \`
+  -AdminEmail "darkzound@gmail.com"
+
+# AUDITORIA antes de habilitar qualquer rota:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\03-configurar-access.ps1 \`
+  -Etapa Auditar -AccountId "4e8c08f70722d344cf39c362a110d706"
+\`\`\`
+
+O script solicita o token via campo seguro no PowerShell sem eco.
+\`Checar\` so faz GET. \`Criar\` pede a confirmacao \`CRIAR ACCESS\`,
+gera um Access service token temporario (30 dias), cifra Client ID
+e Client Secret com DPAPI em
+\`%LOCALAPPDATA%\Maltworks\lab-access-client.dpapi.json\`
+e cria uma aplicacao self-hosted **exatamente** para
+\`api-staging.maltworks.com.br\`, com duas regras restritas:
+Service Auth para o token especifico e Allow para um unico e-mail.
+Nao usa EveryOne, Bypass ou *workers.dev*.
+
+**Falhas de rede/permissao mantem a rota desativada**. Se a criacao do
+Service Token funcionar mas a do app falhar, o token ja esta salvo
+criptografado; repetir a etapa usa o mesmo token sem criar outro.
+Em nenhuma hipotese habilite a rota se a verificacao final das politicas
+nao for aprovada. O script nunca cria DNS, rotas ou publica Workers.
+
+--- 
+
 ## E. Proteger o Worker e configurar hostname
 
 Pelo painel Cloudflare Zero Trust:
