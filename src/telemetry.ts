@@ -165,11 +165,14 @@ export async function ingestTelemetry(
     ),
     env.DB.prepare(
       `UPDATE devices
-          SET last_seen_at = ?2,
-              firmware_version = ?3,
-              updated_at = ?2
+          SET last_seen_at = MAX(last_seen_at, ?2),
+              firmware_version = COALESCE(
+                (SELECT firmware_version FROM device_latest_state WHERE device_id = ?1),
+                firmware_version
+              ),
+              updated_at = MAX(updated_at, ?2)
         WHERE id = ?1`,
-    ).bind(payload.deviceId, now, payload.firmware.version),
+    ).bind(payload.deviceId, now),
     env.DB.prepare(
       `INSERT INTO device_latest_state (
         device_id, received_at, sent_at, boot_id, sequence,
@@ -191,7 +194,14 @@ export async function ingestTelemetry(
         alarms_active = excluded.alarms_active,
         rssi = excluded.rssi,
         firmware_version = excluded.firmware_version,
-        state_json = excluded.state_json`,
+        state_json = excluded.state_json
+      WHERE (
+        device_latest_state.boot_id = excluded.boot_id
+        AND excluded.sequence > device_latest_state.sequence
+      ) OR (
+        device_latest_state.boot_id <> excluded.boot_id
+        AND excluded.received_at > device_latest_state.received_at
+      )`,
     ).bind(
       payload.deviceId,
       now,
@@ -211,9 +221,13 @@ export async function ingestTelemetry(
     ),
   ];
 
+  // The latest-state upsert must run before the devices UPDATE: a late
+  // packet cannot roll back the saved state or firmware version.
+  const orderedStatements = [statements[0]!, statements[2]!, statements[1]!];
+
   // Store periodic snapshots and transitions only. HTTP telemetry still
   // authenticates, processes command results, raises alarms and reaches realtime.
-  if (persistSample) await env.DB.batch(statements);
+  if (persistSample) await env.DB.batch(orderedStatements);
   if (payload.commandResult) {
     await processCommandResult(env.DB, payload.deviceId, payload.commandResult, now);
   }
@@ -232,7 +246,7 @@ export async function ingestTelemetry(
       // Fail safe: a 30-second D1 heartbeat allows offline detection and
       // remote command fallback, without reverting to 5-second D1 writes.
       if (!persistSample && shouldPersistRealtimeFailover(previous, now)) {
-        await env.DB.batch(statements);
+        await env.DB.batch(orderedStatements);
       }
     }
   }
