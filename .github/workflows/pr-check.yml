@@ -26,3 +26,11 @@ jobs:
         run: npm run check
       - name: Run tests against isolated D1
         run: npm test
+      - name: Smoke-test local SQLite fleet simulator
+        run: |
+          python3 scripts/simulate_history_capacity.py \
+            --devices 1,5 \
+            --payload-bytes 900 \
+            --event-percent 2 \
+            --output /tmp/maltworks-history-simulation.json > /dev/null
+          python3 -c "import json; p=json.load(open('/tmp/maltworks-history-simulation.json')); assert len(p['scenarios']) == 2"
