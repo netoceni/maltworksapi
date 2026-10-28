@@ -1,5 +1,68 @@
 # Maltworks 5.19 — provisionamento da homologação isolada
 
+## Preferencial: scripts PowerShell seguros e faseados (Windows)
+
+No PowerShell, faça checkout da branch de homologação e instale as
+dependências (o script **não** executa comandos na branch `main`):
+
+```powershell
+Set-Location "$HOME\maltworksapi"
+git fetch origin
+git switch test/staging-history-lab-free10-20261028
+npm.cmd ci
+npx.cmd wrangler whoami
+```
+
+Se `whoami` mostrar que não está autenticado, execute
+`npx.cmd wrangler login` e tente novamente. Confira em qual conta
+Cloudflare você está conectado. Uma conta de homologação separada é
+preferível para não dividir cotas do Free.
+
+Execute **uma etapa de cada vez**, conferindo a saída antes da próxima:
+
+```powershell
+# 1. Criar D1 novo e arquivo local de staging. Confirmação: CRIAR LAB
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\01-provisionar-staging.ps1 -Etapa Preparar
+
+# 2. Aplicar as migrações APENAS no novo D1. Confirmação: MIGRAR LAB
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\01-provisionar-staging.ps1 -Etapa Migrar
+
+# 3. Publicar Worker e DO SEM URL pública. Confirmação: PUBLICAR PRIVADO
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\01-provisionar-staging.ps1 -Etapa PublicarPrivado
+
+# 4. Gerar 3 segredos aleatórios de staging (não exibidos em tela)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\01-provisionar-staging.ps1 -Etapa Segredos
+```
+
+O `wrangler.lab-staging.jsonc` local fica ignorado pelo Git e
+**não modifica** o `wrangler.jsonc` da produção. Antes de qualquer
+migração, o script confere nome/UUID do D1 real, recusa o UUID
+`a1bf5a75-1bec-4437-92fa-64e69c3da081`, valida
+`workers_dev=false`, `preview_urls=false`, nenhuma rota pública,
+cron, R2 ou e-mail e exige confirmação digitada. A primeira etapa
+usa `--no-update-config` para não modificar a configuração produtiva.
+
+O script `02-testar-staging.ps1` por padrão é **dry-run sem rede**:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\02-testar-staging.ps1
+```
+
+O modo `-Enviar` só é usado **depois** de ter Access no
+hostname de homologação, rota configurada, dispositivos fictícios
+reivindicados e tokens de teste fornecidos por variáveis locais.
+Nunca colar tokens/segredos no ChatGPT.
+
+**IMPORTANTE SOBRE WEBSOCKET:** não aplique somente a proteção
+Worker-level Access. Segundo a Cloudflare, ela retorna **403**
+para WebSocket. A API de homologação precisa de **hostname-based
+Access**, protegendo integralmente `api-staging.maltworks.com.br`,
+antes de adicionar a rota. Isso vale também para o realtime do Lab
+e do Cloud. A configuração de Access/rota é a fase seguinte e
+continua separada do script de provisionamento inicial.
+
+---
+
 **Estado atual (28/10/2026):** testes de integração executados no GitHub,
 **infraestrutura Cloudflare remota ainda não provisionada**. Este manual
 não autoriza usar o D1 recuperado de produção. A base do trabalho é o
@@ -98,9 +161,12 @@ Não expor o serviço até confirmar o controle de acesso.
 ## E. Proteger o Worker e configurar hostname
 
 Pelo painel Cloudflare Zero Trust:
-1. Ativar Cloudflare Access no **Worker inteiro**, inclusive previews,
-   restringindo desenvolvedores autorizados. Proteger apenas um hostname
-   pode deixar outras URLs acessíveis.
+1. Configurar **Access baseado no hostname**
+   `api-staging.maltworks.com.br` antes de expor qualquer rota.
+   Não usar Worker-level Access nesta API: o real-time usa WebSocket e
+   a Cloudflare informa que Worker-level Access bloqueia upgrades com 403.
+   O Worker deve continuar com `workers_dev:false` e
+   `preview_urls:false` para não criar outro ponto de entrada.
 2. Criar uma política **Service Auth** e um service token de staging
    para o CLI do Maltworks Lab.
 3. Verificar que requisições anônimas para o Worker são bloqueadas.
@@ -165,3 +231,5 @@ Documentação oficial:
 - D1: https://developers.cloudflare.com/workers/wrangler/commands/d1/
 - Workers: https://developers.cloudflare.com/workers/wrangler/commands/workers/
 - Access: https://developers.cloudflare.com/workers/configuration/cloudflare-access/
+- D1 CLI: https://developers.cloudflare.com/d1/wrangler-commands/
+- Preview URLs: https://developers.cloudflare.com/workers/configuration/routing/workers-dev/
