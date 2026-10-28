@@ -2,7 +2,7 @@ import { requireSystemAdmin } from "./admin";
 import { requireSession, selectOrganization } from "./auth";
 import { randomId, sha256Hex } from "./crypto";
 import { jsonResponse, readJson } from "./http";
-import { recordFirmwareAvailableNotifications } from "./notifications";
+import { OFFLINE_AFTER_SECONDS, recordFirmwareAvailableNotifications } from "./notifications";
 import { authenticateDevice, publishNotificationsRealtime } from "./realtime";
 import { ApiError } from "./types";
 
@@ -146,7 +146,7 @@ export async function userRequestFirmwareUpdate(
   let profileActive = profileIsActive(device.stateJson);
   try {
     const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(deviceId);
-    if (live?.online && now - live.lastSeenAt <= 30) {
+    if (live?.online && now - live.lastSeenAt <= OFFLINE_AFTER_SECONDS) {
       lastSeenAt = Math.max(lastSeenAt, live.lastSeenAt);
       if (live.state) profileActive = live.state.profile.active;
     }
@@ -156,7 +156,7 @@ export async function userRequestFirmwareUpdate(
       message: error instanceof Error ? error.message : String(error),
     });
   }
-  if (now - lastSeenAt > 30) {
+  if (now - lastSeenAt > OFFLINE_AFTER_SECONDS) {
     throw new ApiError(409, "DEVICE_OFFLINE", "O controlador esta offline. Aguarde a reconexao.");
   }
   if (profileActive) {
@@ -202,7 +202,7 @@ export async function userRequestFirmwareUpdate(
 
 export async function adminListOtaDevices(request: Request, env: Env, requestId: string): Promise<Response> {
   await requireSystemAdmin(request, env);
-  const onlineSince = epochSeconds() - 30;
+  const onlineSince = epochSeconds() - OFFLINE_AFTER_SECONDS;
   const rows = await env.DB.prepare(
     `SELECT d.id, d.name, d.status, d.firmware_version AS firmwareVersion,
             d.last_seen_at AS lastSeenAt, d.organization_id AS organizationId,
