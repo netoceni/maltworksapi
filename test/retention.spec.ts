@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   D1_STORAGE_WARNING_BYTES,
+  RETENTION_BATCH_SIZE,
   pruneExpiredTelemetry,
   runTelemetryRetention,
   shouldPruneTelemetry,
@@ -15,6 +16,8 @@ describe("raw telemetry retention", () => {
     expect(() => telemetryRetentionDays("-1")).toThrow();
     expect(() => telemetryRetentionDays("7.5")).toThrow();
     expect(() => telemetryRetentionDays("3651")).toThrow();
+    expect(RETENTION_BATCH_SIZE * 6 * 24).toBe(57_600);
+    expect(RETENTION_BATCH_SIZE * 6 * 24).toBeGreaterThan(25 * 1_440 * 1.02);
     expect(shouldPruneTelemetry(Date.UTC(2026, 9, 27, 10, 20))).toBe(true);
     expect(shouldPruneTelemetry(Date.UTC(2026, 9, 27, 10, 21))).toBe(false);
   });
@@ -82,7 +85,7 @@ describe("raw telemetry retention", () => {
             return {
               run: async () => ({
                 meta: {
-                  changes: 250,
+                  changes: RETENTION_BATCH_SIZE,
                   size_after: D1_STORAGE_WARNING_BYTES,
                   rows_read: 251,
                   rows_written: 500,
@@ -97,10 +100,10 @@ describe("raw telemetry retention", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     try {
       const env = { DB: db, TELEMETRY_RETENTION_DAYS: "7" } as unknown as Env;
-      expect(await runTelemetryRetention(env, 1_800_000_000_000)).toBe(250);
+      expect(await runTelemetryRetention(env, 1_800_000_000_000)).toBe(RETENTION_BATCH_SIZE);
       expect(info).toHaveBeenCalledWith(
         "Telemetry retention",
-        expect.objectContaining({ deletedRows: 250, sizeAfterBytes: D1_STORAGE_WARNING_BYTES }),
+        expect.objectContaining({ deletedRows: RETENTION_BATCH_SIZE, sizeAfterBytes: D1_STORAGE_WARNING_BYTES }),
       );
       expect(warn).toHaveBeenCalledWith(
         "D1 storage approaching free-tier capacity",
@@ -108,7 +111,7 @@ describe("raw telemetry retention", () => {
       );
       expect(warn).toHaveBeenCalledWith(
         "Telemetry retention batch at capacity",
-        expect.objectContaining({ batchSize: 250 }),
+        expect.objectContaining({ batchSize: RETENTION_BATCH_SIZE }),
       );
     } finally {
       warn.mockRestore();
