@@ -9,6 +9,7 @@ import {
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
 import { publishNotificationsRealtime, publishTelemetryRealtime } from "./realtime";
 import {
+  isStaleTelemetry,
   shouldPersistRealtimeFailover,
   shouldPersistTelemetry,
   telemetryPersistenceIntervalSeconds,
@@ -103,6 +104,7 @@ export async function ingestTelemetry(
   const persistenceInterval = telemetryPersistenceIntervalSeconds(
     samplingEnv.TELEMETRY_PERSIST_INTERVAL_SECONDS,
   );
+  const stalePacket = isStaleTelemetry(payload, previous);
   const persistSample = shouldPersistTelemetry(payload, previous, now, persistenceInterval);
   const payloadJson = JSON.stringify(payload);
   const statements = [
@@ -201,6 +203,8 @@ export async function ingestTelemetry(
       ) OR (
         device_latest_state.boot_id <> excluded.boot_id
         AND excluded.received_at > device_latest_state.received_at
+        AND (device_latest_state.sent_at = 0 OR excluded.sent_at = 0
+             OR excluded.sent_at >= device_latest_state.sent_at)
       )`,
     ).bind(
       payload.deviceId,
@@ -251,7 +255,9 @@ export async function ingestTelemetry(
     }
   }
 
-  ctx.waitUntil(reconcileOtaFromTelemetry(env, payload.deviceId, payload.firmware.version, now));
+  if (!stalePacket) {
+    ctx.waitUntil(reconcileOtaFromTelemetry(env, payload.deviceId, payload.firmware.version, now));
+  }
   if (notificationIds.length) {
     ctx.waitUntil(deliverNotificationEmails(env, notificationIds));
     ctx.waitUntil(publishNotificationsRealtime(env, previous?.organizationId ?? null));
