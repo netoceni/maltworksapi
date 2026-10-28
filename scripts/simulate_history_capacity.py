@@ -6,8 +6,8 @@ Runs the actual migration 0017 and the same summary SQL as history-rollup.ts.
 Only standard-library Python modules are required.
 
 Examples:
-  python3 scripts/simulate_history_capacity.py --devices 1,5,10,25,50,100
-  python3 scripts/simulate_history_capacity.py --devices 10,25,50 --event-percent 2
+  python3 scripts/simulate_history_capacity.py --devices 1,5,10 --event-percent 2
+  python3 scripts/simulate_history_capacity.py --devices 10 --persist-seconds 180 --http-seconds 30
 """
 
 import argparse
@@ -78,27 +78,31 @@ def size_bytes(db):
     return db.execute("PRAGMA page_count").fetchone()[0] * db.execute("PRAGMA page_size").fetchone()[0]
 
 
-def sample_rows(devices, start, payload, every_event):
-    for minute in range(1440):
-        timestamp = start + 60 * minute
+def sample_rows(devices, start, payload, every_event, persist_seconds):
+    for sample in range(DAY // persist_seconds):
+        minute = sample * persist_seconds // 60
+        timestamp = start + persist_seconds * sample
         for unit in range(devices):
             device = f"MW-{unit:012X}"
             temperature = round(18 + ((minute + unit) % 30) * 0.03, 2)
             well = None if (minute + unit) % 50 == 0 else temperature - 0.1
             cooling = int((minute + unit) % 20 < 8)
             yield (
-                device, "AA001122", minute * 2, timestamp, timestamp, temperature,
+                device, "AA001122", sample * 2, timestamp, timestamp, temperature,
                 well, 18.0, "COOLING" if cooling else "STABLE",
                 cooling, 0, 0, -56, payload,
             )
             if every_event and (minute + unit * 7) % every_event == 0:
                 yield (
-                    device, "AA001122", minute * 2 + 1, timestamp + 30, timestamp + 30,
+                    device, "AA001122", sample * 2 + 1,
+                    timestamp + min(30, persist_seconds // 2),
+                    timestamp + min(30, persist_seconds // 2),
                     temperature + 0.1, well, 18.0, "ALARM", cooling, 0, 1, -56, payload,
                 )
 
 
-def workload(count, payload_bytes, event_percent, directory):
+def workload(count, payload_bytes, event_percent, directory,
+             persist_seconds, http_seconds, heartbeat_seconds):
     db = sqlite3.connect(directory / f"maltworks-history-{count}.db")
     db.execute("PRAGMA synchronous=OFF")  # Local-only performance measurement.
     db.executescript(BASE_SCHEMA)
@@ -120,7 +124,7 @@ def workload(count, payload_bytes, event_percent, directory):
     )
     t0 = time.perf_counter()
     buffer = []
-    for row in sample_rows(count, start, payload, event_every):
+    for row in sample_rows(count, start, payload, event_every, persist_seconds):
         buffer.append(row)
         if len(buffer) == 10000:
             db.executemany(insert, buffer)
@@ -170,7 +174,13 @@ def workload(count, payload_bytes, event_percent, directory):
     extra_ops = raw + fine * 2 + hourly * 2
     result = {
         "devices": count,
-        "http_requests_day": count * DAY // 5,
+        "http_requests_day": count * DAY // http_seconds,
+        "do_heartbeat_requests_day": count * DAY // heartbeat_seconds,
+        "do_http_rpc_requests_day": count * DAY // http_seconds,
+        "do_total_requests_day": count * DAY // heartbeat_seconds + count * DAY // http_seconds,
+        "persist_interval_seconds": persist_seconds,
+        "http_interval_seconds": http_seconds,
+        "heartbeat_interval_seconds": heartbeat_seconds,
         "persisted_rows_day": raw,
         "five_min_rows_day": fine,
         "hourly_rows_day": hourly,
@@ -198,7 +208,10 @@ def workload(count, payload_bytes, event_percent, directory):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--devices", default="1,5,10,25,50,100")
+    parser.add_argument("--devices", default="1,5,10")
+    parser.add_argument("--http-seconds", type=int, default=30)
+    parser.add_argument("--heartbeat-seconds", type=int, default=30)
+    parser.add_argument("--persist-seconds", type=int, default=180)
     parser.add_argument("--payload-bytes", type=int, default=900)
     parser.add_argument("--event-percent", type=float, default=0)
     parser.add_argument("--output", type=Path, default=None)
@@ -210,9 +223,14 @@ def main():
         parser.error("--payload-bytes must be 200..5000")
     if args.event_percent < 0 or args.event_percent > 50:
         parser.error("--event-percent must be 0..50")
+    for field in ("http_seconds", "heartbeat_seconds", "persist_seconds"):
+        value = getattr(args, field)
+        if value < 5 or DAY % value != 0:
+            parser.error(f"--{field.replace('_', '-')} must be >= 5 and divide 86400")
     with tempfile.TemporaryDirectory(prefix="maltworks-history-") as directory:
         results = [
-            workload(item, args.payload_bytes, args.event_percent, Path(directory))
+            workload(item, args.payload_bytes, args.event_percent, Path(directory),
+                     args.persist_seconds, args.http_seconds, args.heartbeat_seconds)
             for item in devices
         ]
     output = {
@@ -220,6 +238,9 @@ def main():
         "duration_hours": 24,
         "payload_bytes_assumed": args.payload_bytes,
         "event_percent_assumed": args.event_percent,
+        "http_seconds": args.http_seconds,
+        "heartbeat_seconds": args.heartbeat_seconds,
+        "persist_seconds": args.persist_seconds,
         "note": "Do not interpret local SQL latency as live D1 latency or heuristics as billed rows.",
         "scenarios": results,
     }
