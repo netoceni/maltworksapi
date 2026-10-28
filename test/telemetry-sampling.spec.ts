@@ -4,6 +4,7 @@ import {
   shouldPersistRealtimeFailover,
   TELEMETRY_PERSIST_INTERVAL_SECONDS,
   TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS,
+  telemetryPersistenceIntervalSeconds,
   type LastPersistedTelemetry,
 } from "../src/telemetry-sampling";
 import type { TelemetryPayload } from "../src/types";
@@ -53,6 +54,18 @@ function persisted(last = first, time = 1_800_000_000): LastPersistedTelemetry {
 }
 
 describe("event-aware D1 sampling", () => {
+  it("accepts explicit safe sampling settings and a legacy rollback option", () => {
+    expect(telemetryPersistenceIntervalSeconds(undefined)).toBe(60);
+    expect(telemetryPersistenceIntervalSeconds("60")).toBe(60);
+    expect(telemetryPersistenceIntervalSeconds("30")).toBe(30);
+    expect(telemetryPersistenceIntervalSeconds("120")).toBe(120);
+    expect(telemetryPersistenceIntervalSeconds("300")).toBe(300);
+    expect(telemetryPersistenceIntervalSeconds("0")).toBe(0);
+    expect(telemetryPersistenceIntervalSeconds("5")).toBe(60);
+    expect(telemetryPersistenceIntervalSeconds("600")).toBe(60);
+    expect(telemetryPersistenceIntervalSeconds("invalid")).toBe(60);
+  });
+
   it("writes first packet, periodic sample and reboot, not ordinary 5s packets", () => {
     const current = copy();
     current.sequence = 2;
