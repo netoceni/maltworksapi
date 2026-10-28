@@ -16,6 +16,11 @@ foreach ($File in $Files) {
         throw ("Erro de sintaxe em " + $File)
     }
     $Source = Get-Content -LiteralPath $File -Raw
+    # PowerShell treats a question mark immediately after an unbraced variable
+    # (e.g. $DatabaseName?) as part of the variable name under StrictMode.
+    if ($Source -match '\$[A-Za-z_][A-Za-z0-9_]*\?') {
+        throw ("Unbraced variable followed by ? in " + $File)
+    }
     if ($Source -match '(?i)wrangler\s+d1\s+(delete|execute).*(maltworks-recovery|maltworks-production)') {
         throw ("Comando proibido em " + $File)
     }
