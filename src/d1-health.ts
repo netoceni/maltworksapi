@@ -5,6 +5,12 @@ export const D1_FREE_LIMIT_BYTES = 500_000_000;
 export const D1_HEALTH_WARNING_BYTES = 250_000_000;
 export const D1_HEALTH_CRITICAL_BYTES = 350_000_000;
 export const RETENTION_DAILY_CAPACITY = RETENTION_BATCH_SIZE * 6 * 24;
+// D1 Workers Free row-write quota (enforced since 2026-09-01).
+// Each *new* telemetry request executes at least three D1 write statements:
+// telemetry INSERT, devices UPDATE, and device_latest_state UPSERT.
+// This estimate excludes indexes, notifications, commands and the pruning job.
+export const D1_FREE_DAILY_WRITE_LIMIT = 100_000;
+export const TELEMETRY_MINIMUM_WRITES_PER_SAMPLE = 3;
 
 export type D1HealthLevel = "normal" | "warning" | "critical";
 
@@ -12,6 +18,7 @@ export interface D1HealthMetrics {
   sizeBytes: number | null;
   telemetryRows: number;
   rowsLast24h: number;
+  rowsLastHour: number;
   expiredRows: number;
 }
 
@@ -59,6 +66,22 @@ export function assessD1Health(metrics: D1HealthMetrics): D1HealthAssessment {
     warning("Telemetria em 24h >= 80% da capacidade diaria de limpeza.");
   }
 
+  // Use a rolling one-hour rate to detect a newly connected fast controller
+  // before a complete 24-hour window of samples has accumulated.
+  const projectedSamplesPerDay = metrics.rowsLastHour * 24;
+  if (projectedSamplesPerDay >= RETENTION_DAILY_CAPACITY) {
+    critical("Ritmo da ultima hora projetado para 24h >= capacidade diaria de limpeza (36.000 amostras).");
+  } else if (projectedSamplesPerDay >= RETENTION_DAILY_CAPACITY * 0.8) {
+    warning("Ritmo da ultima hora projetado para 24h >= 80% da capacidade diaria de limpeza.");
+  }
+
+  const projectedMinimumRowWrites = projectedSamplesPerDay * TELEMETRY_MINIMUM_WRITES_PER_SAMPLE;
+  if (projectedMinimumRowWrites >= D1_FREE_DAILY_WRITE_LIMIT) {
+    critical("Estimativa minima de escritas diarias de telemetria >= 100.000 (cota D1 Free).");
+  } else if (projectedMinimumRowWrites >= D1_FREE_DAILY_WRITE_LIMIT * 0.8) {
+    warning("Estimativa minima de escritas diarias de telemetria >= 80% da cota D1 Free.");
+  }
+
   if (metrics.expiredRows >= RETENTION_DAILY_CAPACITY) {
     critical("Fila de registros expirados >= capacidade de um dia de limpeza.");
   } else if (metrics.expiredRows >= RETENTION_BATCH_SIZE * 4) {
@@ -86,10 +109,12 @@ export async function runD1DailyHealth(
     "SELECT " +
     "(SELECT COUNT(*) FROM telemetry) AS telemetryRows, " +
     "(SELECT COUNT(*) FROM telemetry WHERE received_at >= ?1) AS rowsLast24h, " +
+    "(SELECT COUNT(*) FROM telemetry WHERE received_at >= ?3) AS rowsLastHour, " +
     "(SELECT COUNT(*) FROM telemetry WHERE received_at < ?2) AS expiredRows",
-  ).bind(now - 86_400, cutoff).all<{
+  ).bind(now - 86_400, cutoff, now - 3_600).all<{
     telemetryRows: number;
     rowsLast24h: number;
+    rowsLastHour: number;
     expiredRows: number;
   }>();
 
@@ -101,6 +126,7 @@ export async function runD1DailyHealth(
     sizeBytes: Number.isFinite(reportedSize) ? reportedSize : null,
     telemetryRows: values.telemetryRows,
     rowsLast24h: values.rowsLast24h,
+    rowsLastHour: values.rowsLastHour,
     expiredRows: values.expiredRows,
   };
   const assessment = assessD1Health(metrics);
@@ -168,6 +194,10 @@ async function emailD1HealthAlert(env: Env, report: D1DailyHealthReport): Promis
     "Tamanho D1: " + sizeText,
     "Telemetrias totais: " + report.telemetryRows,
     "Telemetrias ultimas 24h: " + report.rowsLast24h,
+    "Telemetrias ultima hora: " + report.rowsLastHour,
+    "Projecao de amostras / dia (ultima hora x24): " + report.rowsLastHour * 24,
+    "Projecao MINIMA de escritas / dia (amostras x3): " +
+      report.rowsLastHour * 24 * TELEMETRY_MINIMUM_WRITES_PER_SAMPLE,
     "Registros expirados: " + report.expiredRows,
     "Retencao: " + report.retentionDays + " dias",
     "Variacao desde a medicao anterior: " +
