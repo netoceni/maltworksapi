@@ -42,6 +42,31 @@ export interface LastPersistedTelemetry {
 }
 
 /**
+ * Ignore retransmitted sequences and an older boot replayed after a reboot.
+ * The sentAt check only applies when both timestamps are meaningful (>0).
+ * A new boot whose clock has not synced (sentAt=0) is allowed to recover.
+ */
+export function isStaleTelemetry(
+  payload: TelemetryPayload,
+  previous: LastPersistedTelemetry | null,
+): boolean {
+  if (!previous) return false;
+  if (previous.bootId === payload.bootId && previous.sequence !== null) {
+    return payload.sequence <= previous.sequence;
+  }
+  if (previous.bootId !== payload.bootId && previous.stateJson && payload.sentAt > 0) {
+    try {
+      const old = JSON.parse(previous.stateJson) as { sentAt?: unknown };
+      return typeof old.sentAt === "number" && old.sentAt > 0 &&
+        payload.sentAt < old.sentAt;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
  * Fail open to persistence if an old record cannot be compared safely.
  * It is better to write one extra sample than suppress an alarm transition.
  */
@@ -54,11 +79,8 @@ export function shouldPersistTelemetry(
   if (intervalSeconds <= 0) return true;
   if (!previous || previous.stateReceivedAt === null || !previous.stateJson) return true;
 
-  // Any replay of a stored sequence must not cause fresh D1 writes,
-  // including while an offline notification is being recovered.
-  if (previous.bootId === payload.bootId &&
-      previous.sequence !== null &&
-      payload.sequence <= previous.sequence) return false;
+  // Do not persist replayed states, even during offline recovery.
+  if (isStaleTelemetry(payload, previous)) return false;
 
   if (previous.offlineActive === 1) return true;
   if (previous.bootId !== payload.bootId) return true;
