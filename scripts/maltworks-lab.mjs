@@ -16,17 +16,22 @@ export function labDeviceId(index) {
   return "MW-" + (0xC00000000000 + index).toString(16).toUpperCase().padStart(12, "0");
 }
 
-function labBootId(index, rebooted) {
-  return (0xA0000000 + index + (rebooted ? 0x10000 : 0))
+function labBootId(index, rebooted, sessionId = 0) {
+  return (0xA0000000 + index + (rebooted ? 0x10000 : 0) + sessionId * 0x20000)
     .toString(16).toUpperCase().padStart(8, "0");
 }
 
 export function makeLabTelemetry(index, tick, {
-  scenario = "normal", intervalSeconds = 30, startAt = 1_800_000_000,
+  scenario = "normal", intervalSeconds = 30,
+  startAt = 1_800_000_000, sessionId = 0,
 } = {}) {
   if (!scenarios.has(scenario)) throw new Error("Unknown simulation scenario");
   if (!Number.isInteger(tick) || tick < 0) throw new Error("Invalid tick");
   if (intervalSeconds < 1 || intervalSeconds > 3600) throw new Error("Invalid interval");
+  if (!Number.isSafeInteger(startAt) || startAt <= 0) throw new Error("Invalid start time");
+  if (!Number.isInteger(sessionId) || sessionId < 0 || sessionId > 2047) {
+    throw new Error("Invalid lab session ID");
+  }
   // An offline frame is omitted, not transmitted with a false disconnected flag.
   if (scenario === "offline" && index === 0 && tick >= 4 && tick <= 9) return null;
 
@@ -41,7 +46,7 @@ export function makeLabTelemetry(index, tick, {
   const result = {
     schemaVersion: 1,
     deviceId: labDeviceId(index),
-    bootId: labBootId(index, rebooted),
+    bootId: labBootId(index, rebooted, sessionId),
     sequence,
     sentAt: startAt + tick * intervalSeconds,
     uptimeSeconds,
@@ -95,6 +100,7 @@ export function makeLabTelemetry(index, tick, {
 
 export function* generateLabFrames({
   devices = 1, frames = 12, intervalSeconds = 30, scenario = "normal",
+  startAt = 1_800_000_000, sessionId = 0,
 } = {}) {
   if (!Number.isInteger(devices) || devices < 1 || devices > 25) {
     throw new Error("Lab pilot supports 1 to 25 devices");
@@ -104,7 +110,9 @@ export function* generateLabFrames({
   }
   for (let tick = 0; tick < frames; tick++) {
     for (let index = 0; index < devices; index++) {
-      const packet = makeLabTelemetry(index, tick, { scenario, intervalSeconds });
+      const packet = makeLabTelemetry(index, tick, {
+        scenario, intervalSeconds, startAt, sessionId,
+      });
       if (packet !== null) yield packet;
     }
   }
