@@ -24,7 +24,18 @@ interface DeviceIdentity {
   organizationId: string;
 }
 
+export interface RealtimeDeviceSnapshot {
+  lastSeenAt: number;
+  online: boolean;
+  receivedAt: number | null;
+  state: TelemetryPayload | null;
+}
+
 export class RealtimeHub extends DurableObject<Env> {
+  // No D1 writes for per-packet live state. Hibernation can clear this map;
+  // the persisted D1 snapshot remains the durable fallback.
+  private readonly latestTelemetry = new Map<string, { receivedAt: number; state: TelemetryPayload }>();
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
@@ -80,8 +91,30 @@ export class RealtimeHub extends DurableObject<Env> {
   }
 
   async publishTelemetry(payload: TelemetryPayload, receivedAt: number): Promise<void> {
+    this.latestTelemetry.set(payload.deviceId, { receivedAt, state: payload });
     await this.touchPresence(payload.deviceId, receivedAt);
     this.broadcast({ type: "telemetry", deviceId: payload.deviceId, receivedAt, state: payload });
+  }
+
+  // Called only by authenticated Worker routes and the offline scanner.
+  // DO SQL stores presence, whereas the high-frequency payload lives in memory.
+  getDeviceSnapshot(deviceId: string): RealtimeDeviceSnapshot | null {
+    const row = this.ctx.storage.sql.exec<{
+      last_seen_at: number;
+      deadline_at: number;
+      online: number;
+    }>(
+      "SELECT last_seen_at, deadline_at, online FROM device_presence WHERE device_id = ?",
+      deviceId,
+    ).toArray()[0];
+    if (!row) return null;
+    const cached = this.latestTelemetry.get(deviceId);
+    return {
+      lastSeenAt: row.last_seen_at,
+      online: row.online === 1 && row.deadline_at > epochSeconds(),
+      receivedAt: cached?.receivedAt ?? null,
+      state: cached?.state ?? null,
+    };
   }
 
   publishNotificationsChanged(): void {
