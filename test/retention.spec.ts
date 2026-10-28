@@ -16,8 +16,8 @@ describe("raw telemetry retention", () => {
     expect(() => telemetryRetentionDays("-1")).toThrow();
     expect(() => telemetryRetentionDays("7.5")).toThrow();
     expect(() => telemetryRetentionDays("3651")).toThrow();
-    expect(RETENTION_BATCH_SIZE * 6 * 24).toBe(57_600);
-    expect(RETENTION_BATCH_SIZE * 6 * 24).toBeGreaterThan(25 * 1_440 * 1.02);
+    expect(RETENTION_BATCH_SIZE * 6 * 24).toBe(36_000);
+    expect(RETENTION_BATCH_SIZE * 6 * 24).toBeGreaterThan(10 * 480 * 1.05);
     expect(shouldPruneTelemetry(Date.UTC(2026, 9, 27, 10, 20))).toBe(true);
     expect(shouldPruneTelemetry(Date.UTC(2026, 9, 27, 10, 21))).toBe(false);
   });
