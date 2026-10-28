@@ -57,12 +57,12 @@ Exemplos: 5 controladores = ~31.920–67.920/dia;
 10 controladores = ~63.840–135.840/dia. D1 real inclui índices,
 comandos, sessão, notificações e possíveis leituras de manutenção.
 
-**Capacidade de limpeza das camadas** (250 brutos/10min, 250 agregados
+**Capacidade de limpeza das camadas** (400 brutos/10min, 250 agregados
 5min/10min, 100 agregados horários/10min):
 
 | Camada | Limite operacional de expiração |
 |---|---:|
-| Brutos 60s | **36.000 linhas/dia** (25 controllers sem eventos) |
+| Brutos 60s | **57.600 linhas/dia** (40 controllers sem eventos) |
 | Agregados 5min | **36.000 linhas/dia** (~125 controllers) |
 | Agregados horários | **14.400 linhas/dia** (~600 controllers) |
 
@@ -117,3 +117,32 @@ processamento local. Não executar no banco de produção.
 **Manter PR #14 em draft.** O merge na `main` executa a migration 0017
 e ativa as rotinas de cron na conta Cloudflare de produção. Nenhum merge
 ou deploy do Histórico 5.19 foi realizado durante este teste.
+
+
+## Revisão para lote piloto de 25 controladores
+A política de limpeza bruta no PR #14 foi ajustada para 400 registros
+a cada 10 minutos (máximo **57.600 registros/dia**). Com telemetria
+persistida a cada 60 segundos, 25 dispositivos geram 36.000 snapshots
+normais/dia; mais 2% de eventos críticos, aproximadamente 36.720/dia.
+Isso oferece margem teórica de 20.880 exclusões/dia, **sem significar
+que o D1 Free suporte a ingestão**.
+
+25 controladores transmitindo HTTP a cada 5 segundos significam 432.000
+requests/dia, mais os acessos da interface e tarefas administrativas.
+Portanto a homologação comercial de 25 controladores **exige planejar
+Workers Paid**, e o orçamento D1 Paid deve ser medido por
+`meta.rows_written`, conforme documentação oficial. O limite do
+Workers Free de 100.000 requests/dia torna inviável a hipótese de
+25 controladores contínuos a cada cinco segundos no plano gratuito.
+
+O simulador local e o teste de 25 dispositivos confirmam apenas a
+consistência do SQL e as projeções analíticas. Não medem cobrança,
+concorrência real ou latência da Cloudflare D1. Veja o plano separado de
+homologação em `docs/history-staging-25-controllers.md`.
+
+## Permissões por plano (proposta provisória)
+- Essencial: até 7 dias de amostras detalhadas, sem endpoint agregado.
+- Plus: até 90 dias agregados (5 minutos ou reagrupados).
+- Pro: até 365 dias agregados, incluindo fonte horária.
+Os dados físicos não são eliminados na redução do plano. A definição
+comercial e o fluxo de cobrança continuam pendentes.
