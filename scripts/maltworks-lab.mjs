@@ -4,7 +4,7 @@
  * No fetch, sockets, tokens, Cloudflare binding or production credentials.
  *
  * Examples:
- * node scripts/maltworks-lab.mjs --devices 25 --frames 12 --scenario normal
+ * node scripts/maltworks-lab.mjs --devices 10 --frames 12 --scenario normal
  * node scripts/maltworks-lab.mjs --devices 2 --frames 12 --scenario alarm
  */
 import { pathToFileURL } from "node:url";
@@ -22,7 +22,7 @@ function labBootId(index, rebooted) {
 }
 
 export function makeLabTelemetry(index, tick, {
-  scenario = "normal", intervalSeconds = 5, startAt = 1_800_000_000,
+  scenario = "normal", intervalSeconds = 30, startAt = 1_800_000_000,
 } = {}) {
   if (!scenarios.has(scenario)) throw new Error("Unknown simulation scenario");
   if (!Number.isInteger(tick) || tick < 0) throw new Error("Invalid tick");
@@ -94,7 +94,7 @@ export function makeLabTelemetry(index, tick, {
 }
 
 export function* generateLabFrames({
-  devices = 1, frames = 12, intervalSeconds = 5, scenario = "normal",
+  devices = 1, frames = 12, intervalSeconds = 30, scenario = "normal",
 } = {}) {
   if (!Number.isInteger(devices) || devices < 1 || devices > 25) {
     throw new Error("Lab pilot supports 1 to 25 devices");
@@ -111,7 +111,7 @@ export function* generateLabFrames({
 }
 
 function parseArgs(args) {
-  const options = { devices: 1, frames: 12, intervalSeconds: 5, scenario: "normal" };
+  const options = { devices: 1, frames: 12, intervalSeconds: 30, scenario: "normal" };
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (!["--devices", "--frames", "--interval", "--scenario"].includes(key)) {
