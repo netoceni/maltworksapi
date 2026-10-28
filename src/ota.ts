@@ -139,10 +139,24 @@ export async function userRequestFirmwareUpdate(
   if (!device) throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado nesta organizacao.");
   if (device.status !== "active") throw new ApiError(409, "DEVICE_NOT_ACTIVE", "O controlador nao esta ativo.");
   const now = epochSeconds();
-  if (now - device.lastSeenAt > 30) {
+  let lastSeenAt = device.lastSeenAt;
+  let profileActive = profileIsActive(device.stateJson);
+  try {
+    const live = await env.REALTIME.getByName(organizationId).getDeviceSnapshot(deviceId);
+    if (live?.online && now - live.lastSeenAt <= 30) {
+      lastSeenAt = Math.max(lastSeenAt, live.lastSeenAt);
+      if (live.state) profileActive = live.state.profile.active;
+    }
+  } catch (error) {
+    console.warn("Realtime OTA preflight unavailable; using D1 fallback", {
+      deviceId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (now - lastSeenAt > 30) {
     throw new ApiError(409, "DEVICE_OFFLINE", "O controlador esta offline. Aguarde a reconexao.");
   }
-  if (profileIsActive(device.stateJson)) {
+  if (profileActive) {
     throw new ApiError(409, "PROFILE_ACTIVE", "Encerre a fermentacao ativa antes de atualizar o firmware.");
   }
   const release = await latestReadyRelease(env.DB);
