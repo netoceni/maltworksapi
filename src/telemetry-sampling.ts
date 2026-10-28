@@ -6,6 +6,16 @@ import type { TelemetryPayload } from "./types";
  * Any safety-relevant transition bypasses the timer.
  */
 export const TELEMETRY_PERSIST_INTERVAL_SECONDS = 60;
+/** Allowed rollout choices: 0=legacy (no decimation), 30..300=sampled. */
+export function telemetryPersistenceIntervalSeconds(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return TELEMETRY_PERSIST_INTERVAL_SECONDS;
+  const value = raw.trim();
+  if (!/^(0|[1-9][0-9]*)$/u.test(value)) return TELEMETRY_PERSIST_INTERVAL_SECONDS;
+  const seconds = Number(value);
+  return Number.isInteger(seconds) && (seconds === 0 || (seconds >= 30 && seconds <= 300))
+    ? seconds
+    : TELEMETRY_PERSIST_INTERVAL_SECONDS;
+}
 export const TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS = 30;
 
 /**
