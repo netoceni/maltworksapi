@@ -35,6 +35,8 @@ export class RealtimeHub extends DurableObject<Env> {
   // No D1 writes for per-packet live state. Hibernation can clear this map;
   // the persisted D1 snapshot remains the durable fallback.
   private readonly latestTelemetry = new Map<string, { receivedAt: number; state: TelemetryPayload }>();
+  // Reject delayed packets from a boot that was already superseded.
+  private readonly retiredBoots = new Map<string, string[]>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -91,9 +93,33 @@ export class RealtimeHub extends DurableObject<Env> {
   }
 
   async publishTelemetry(payload: TelemetryPayload, receivedAt: number): Promise<void> {
+    const current = this.latestTelemetry.get(payload.deviceId);
+    const retired = this.retiredBoots.get(payload.deviceId) ?? [];
+    const sameBoot = current?.state.bootId === payload.bootId;
+    const replayed = current && (
+      (sameBoot && payload.sequence <= current.state.sequence) ||
+      (!sameBoot && retired.includes(payload.bootId))
+    );
+
+    // A valid authenticated retry is still proof of network presence, but it
+    // must never roll back the dashboard or notify a stale safety transition.
+    if (replayed) {
+      await this.touchPresence(payload.deviceId, receivedAt);
+      return;
+    }
+
+    if (current && !sameBoot) {
+      retired.push(current.state.bootId);
+      if (retired.length > 4) retired.shift();
+      this.retiredBoots.set(payload.deviceId, retired);
+    }
+
     this.latestTelemetry.set(payload.deviceId, { receivedAt, state: payload });
     await this.touchPresence(payload.deviceId, receivedAt);
-    this.broadcast({ type: "telemetry", deviceId: payload.deviceId, receivedAt, state: payload });
+    // Another HTTP request may have published a newer state during the await.
+    if (this.latestTelemetry.get(payload.deviceId)?.state === payload) {
+      this.broadcast({ type: "telemetry", deviceId: payload.deviceId, receivedAt, state: payload });
+    }
   }
 
   // Called only by authenticated Worker routes and the offline scanner.
@@ -195,8 +221,8 @@ export class RealtimeHub extends DurableObject<Env> {
       `INSERT INTO device_presence (device_id, last_seen_at, deadline_at, online)
        VALUES (?, ?, ?, 1)
        ON CONFLICT(device_id) DO UPDATE SET
-         last_seen_at = excluded.last_seen_at,
-         deadline_at = excluded.deadline_at,
+         last_seen_at = MAX(last_seen_at, excluded.last_seen_at),
+         deadline_at = MAX(deadline_at, excluded.deadline_at),
          online = 1`,
       deviceId,
       lastSeenAt,
