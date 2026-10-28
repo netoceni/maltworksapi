@@ -202,7 +202,11 @@ export async function ingestTelemetry(
         AND excluded.sequence > device_latest_state.sequence
       ) OR (
         device_latest_state.boot_id <> excluded.boot_id
-        AND excluded.received_at > device_latest_state.received_at
+        AND (
+          excluded.received_at > device_latest_state.received_at
+          OR (excluded.received_at = device_latest_state.received_at
+              AND excluded.sent_at > device_latest_state.sent_at)
+        )
         AND (device_latest_state.sent_at = 0 OR excluded.sent_at = 0
              OR excluded.sent_at >= device_latest_state.sent_at)
       )`,
