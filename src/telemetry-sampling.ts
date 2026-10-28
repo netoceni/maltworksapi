@@ -6,6 +6,22 @@ import type { TelemetryPayload } from "./types";
  * Any safety-relevant transition bypasses the timer.
  */
 export const TELEMETRY_PERSIST_INTERVAL_SECONDS = 60;
+export const TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS = 30;
+
+/**
+ * If the realtime Durable Object is temporarily unavailable, D1 is a
+ * low-frequency heartbeat fallback. Do not return to per-packet writes,
+ * which would exhaust the free database row-write quota during an outage.
+ */
+export function shouldPersistRealtimeFailover(
+  previous: LastPersistedTelemetry | null,
+  now: number,
+): boolean {
+  return !previous || previous.stateReceivedAt === null ||
+    now < previous.stateReceivedAt ||
+    now - previous.stateReceivedAt >= TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS;
+}
+
 
 export interface LastPersistedTelemetry {
   bootId: string | null;
