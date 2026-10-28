@@ -5,12 +5,13 @@ não acessa internet, não contém credenciais e não envia HTTP**.
 
 ## Objetivo
 Gerar telemetria JSONL determinística conforme o schema do Controller para
-testar a API e o Histórico Inteligente sem hardware, com até 25 controladores
-virtuais simultâneos.
+testar a API e o Histórico Inteligente sem hardware. O piloto Free
+prevê **10 controladores virtuais a cada 30 segundos**; o gerador
+aceita até 25 somente para testes de carga futuros em ambiente isolado.
 
 ## Exemplos
 ```bash
-node scripts/maltworks-lab.mjs --devices 25 --frames 12 --interval 5 --scenario normal > lab-25.jsonl
+node scripts/maltworks-lab.mjs --devices 10 --frames 12 --interval 30 --scenario normal > lab-10.jsonl
 node scripts/maltworks-lab.mjs --devices 1 --frames 12 --scenario alarm > alarm.jsonl
 node scripts/maltworks-lab.mjs --devices 2 --frames 20 --scenario reboot > reboot.jsonl
 node --test scripts/maltworks-lab.spec.mjs
