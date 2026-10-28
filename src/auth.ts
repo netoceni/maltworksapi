@@ -351,6 +351,7 @@ export async function requireSession(request: Request, env: Env): Promise<Sessio
     organizationId: string;
     organizationName: string;
     role: "owner" | "admin" | "member" | "viewer";
+    historyPlan: "essential" | "plus" | "pro";
   }>();
 
   return {
