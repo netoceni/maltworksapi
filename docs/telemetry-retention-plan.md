@@ -34,11 +34,25 @@
 | 30 s | 2.880 | 8.640/dia |
 | 60 s | 1.440 | 4.320/dia |
 
-**Esses valores são estimativas da rota HTTP, não métricas reais de cobrança.**
-Dois equipamentos a cada 5 segundos geram no mínimo 103.680 operações simples
-de escrita/dia, antes da rotina de retenção e de eventuais índices/alertas.
-Três equipamentos a 5 s geram 51.840 amostras/dia, superando a
-capacidade de exclusão de 36.000/dia.
+**Esses valores são o piso das três instruções D1 por amostra, não métricas
+reais de cobrança.** Dois equipamentos a cada 5 segundos geram no mínimo
+103.680 instruções simples de escrita/dia, antes da rotina de retenção
+e de eventuais índices/alertas. Três equipamentos a 5 s geram
+51.840 amostras/dia, superando a capacidade de exclusão de 36.000/dia.
+
+### Medição real — 28/10/2026 às 09h43 BRT
+O workflow `D1 read-only diagnostics` (reexecução do run `40561199502`)
+informou: **15.814.656 bytes**, **10.119 telemetrias em 24h**,
+**84.178 linhas gravadas em 24h** e **0 linhas vencidas (>7 dias)**.
+O quociente aproximado foi **8,3 escritas por telemetria**, mas esse valor
+**não é uma medição isolada do endpoint**: inclui outras operações no D1,
+índices e eventuais registros de backend. A janela `rows_written_24h`
+é móvel, enquanto o limite Free reinicia à meia-noite UTC; não confundir as janelas.
+
+O alerta preventivo neste PR usa duas projeções: piso técnico de 3
+escritas/amostra e **fator heurístico 8** para antecipar risco.
+Confirmar sempre pelo dado real `rows_written_24h` e pelas métricas
+diárias do painel Cloudflare antes de alterar cadências.
 
 ## Fases recomendadas (nesta ordem)
 
