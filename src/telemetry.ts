@@ -8,6 +8,7 @@ import {
 } from "./notifications";
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
 import { publishNotificationsRealtime, publishTelemetryRealtime } from "./realtime";
+import { shouldPersistTelemetry } from "./telemetry-sampling";
 import { reconcileOtaFromTelemetry } from "./ota";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
@@ -94,6 +95,7 @@ export async function ingestTelemetry(
   }
 
   const previous = await previousDeviceState(env.DB, payload.deviceId);
+  const persistSample = shouldPersistTelemetry(payload, previous, now);
   const payloadJson = JSON.stringify(payload);
   const statements = [
     env.DB.prepare(
@@ -201,12 +203,29 @@ export async function ingestTelemetry(
     ),
   ];
 
-  await env.DB.batch(statements);
+  // Store periodic snapshots and transitions only. HTTP telemetry still
+  // authenticates, processes command results, raises alarms and reaches realtime.
+  if (persistSample) await env.DB.batch(statements);
   if (payload.commandResult) {
     await processCommandResult(env.DB, payload.deviceId, payload.commandResult, now);
   }
   const notificationIds = await recordTelemetryNotifications(env, payload, previous, now);
-  ctx.waitUntil(publishTelemetryRealtime(env, previous?.organizationId ?? null, payload, now));
+
+  if (previous?.organizationId) {
+    try {
+      // Await the DO update so online/presence and the current state are
+      // available when the HTTP response reaches the Controller.
+      await publishTelemetryRealtime(env, previous.organizationId, payload, now);
+    } catch (error) {
+      console.error("Realtime telemetry publish failed", {
+        deviceId: payload.deviceId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      // Fail safe: keep D1 online timestamps and state fresh if the DO is down.
+      if (!persistSample) await env.DB.batch(statements);
+    }
+  }
+
   ctx.waitUntil(reconcileOtaFromTelemetry(env, payload.deviceId, payload.firmware.version, now));
   if (notificationIds.length) {
     ctx.waitUntil(deliverNotificationEmails(env, notificationIds));
