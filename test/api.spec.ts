@@ -1268,7 +1268,7 @@ describe("Maltworks Cloud API 5.18.0", () => {
     expect(prematureOfflineNotification?.count).toBe(0);
 
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
-      .bind(offlineCheckNow - 40, deviceId).run();
+      .bind(offlineCheckNow - 110, deviceId).run();
     // A D1 timestamp of 40s is not sufficient to declare offline:
     // the real-time Durable Object still sees current packets.
     expect(await scanOfflineDevices(env)).toEqual([]);
