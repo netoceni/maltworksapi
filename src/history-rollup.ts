@@ -106,20 +106,32 @@ export async function rollupHistoryResolution(
     return { resolutionSeconds, from, processedUntil: from, advanced: false, summaryRows: 0 };
   }
 
-  // D1 .batch() executes SQL statements transactionally: if the summary
-  // insert fails, the watermark never advances. No deletions happen here.
+  // Both SQL statements share one D1 batch transaction. The watermark
+  // advances ONLY if aggregate sample counts match source raw row counts
+  // within the processed window. A broken/partial rollup cannot unlock prune.
+  const table = resolutionSeconds === HISTORY_FIVE_MINUTES ? "history_5min" : "history_hourly";
   const results = await db.batch([
     rollupStatement(db, resolutionSeconds, from, until, Math.floor(now)),
     db.prepare(
       `INSERT INTO history_rollup_watermarks
        (resolution_seconds, processed_until, updated_at)
-       VALUES (?1, ?2, ?3)
+       SELECT ?1, ?2, ?3
+        WHERE (
+          SELECT COALESCE(SUM(samples), 0) FROM ${table}
+           WHERE bucket_start >= ?4 AND bucket_start < ?2
+        ) = (
+          SELECT COUNT(*) FROM telemetry
+           WHERE received_at >= ?4 AND received_at < ?2
+        )
        ON CONFLICT(resolution_seconds) DO UPDATE SET
          processed_until = MAX(history_rollup_watermarks.processed_until,
            excluded.processed_until),
          updated_at = excluded.updated_at`,
-    ).bind(resolutionSeconds, until, Math.floor(now)),
+    ).bind(resolutionSeconds, until, Math.floor(now), from),
   ]);
+  if ((results[1]?.meta.changes ?? 0) !== 1) {
+    throw new Error("History rollup coverage mismatch: source rows not fully archived.");
+  }
   return {
     resolutionSeconds,
     from,
