@@ -36,13 +36,20 @@ da janela vieram da ingestão.
 5. Flutuação ordinária de temperatura, RSSI, contagem de segundos e
    rampas contínuas de setpoint não força gravação adicional.
 6. O estado instantâneo usado por `/latest`, `/devices`, validações
-   de comando, pré-checagem OTA e contadores online do Admin consulta
-   primeiro o DO e usa D1 como fallback caso indisponível.
+   de comando, pré-checagem OTA, inventário OTA e contadores online do Admin
+   consulta primeiro o DO e usa D1 como fallback caso indisponível.
+   O histórico de até **15 minutos** recebe até 180 pontos de alta resolução
+   temporariamente mantidos em memória no DO; após hibernação ou reinício
+   do DO, a curva usa os pontos do D1 (resolução de 60s) como fallback.
 7. Alertas de offline são comandados pelo DO após 30s sem contato.
    A varredura D1 usa margem para evitar falsos offline pelos snapshots
    amostrados e confirma a presença no DO.
 8. Quando DO falha, o D1 é fallback a cada **30 segundos**, e não a cada
    pacote HTTP; a frequência permanece limitada para impedir nova saturação.
+9. Frames antigos/retransmitidos não sobrescrevem o estado atual do D1 ou
+   DO. Em caso de reboot no mesmo segundo, a sequência e o timestamp
+   emitidos pelo firmware ajudam a resolver a ordem. Um frame duplicado
+   ainda pode confirmar a reconexão sem recriar eventos de alarme.
 
 ## Configuração
 
@@ -72,7 +79,10 @@ confirmada nas métricas remotas após publicação.
 ## Pré-implantação — não pular
 
 - CI: `npm run check`, `npm test` em D1 isolado aprovados;
-  exigir resultados do **último commit** deste PR.
+  exigir resultados do **último commit** deste PR. Revisão de 28/10:
+  [run 40701689027](https://github.com/netoceni/maltworksapi/actions/runs/40701689027)
+  aprovou 23 testes (7 arquivos), inclusive concorrência entre sequências,
+  retorno de estado após reinício e histórico live sem nova escrita no D1.
 - Confirmar política de segurança do login, comandos, OTA, alarmes,
   presença e reentrada após perda de Wi-Fi.
 - Executar diagnóstico somente leitura e confirmar a saúde do banco
@@ -104,6 +114,12 @@ confirmada nas métricas remotas após publicação.
   de 7 dias permanece intacta; `range=all` **não** cria arquivo permanente.
 - E2E em hardware, simulação de redes intermitentes em campo,
   testes de carga multi-dispositivo e validação de custos Durable Objects.
+- O buffer de 15 minutos é **volátil e não constitui histórico durável**.
+  Requer futura agregação em D1/R2 para retenção de longa duração.
+- Mensagens de um boot antigo com relógio completamente dessincronizado
+  podem não ser ordenáveis após uma hibernação do DO. A proteção é forte
+  para o fluxo normal de sequência monotônica, mas não é uma garantia
+  de ordenação total distribuída sob falhas simultâneas de relógio e rede.
 - Proteção da branch `main` (não disponível para escrita nesta integração).
 
 A próxima fase exige agregar o histórico antes de excluir qualquer amostra
