@@ -111,6 +111,20 @@ describe("sampled HTTP telemetry / DO realtime / D1 integration", () => {
     expect(await latest.json()).toMatchObject({
       state: { sequence: 2, temperatures: { refrigerator: { value: 17.8 } } },
     });
+
+    // The Cloud refreshes short-range charts from the HTTP history API.
+    // That history must keep the high-resolution DO point, even though only
+    // sample 1 was written to D1.
+    const graph = await exports.default.fetch(
+      base + "/v1/devices/" + deviceId + "/telemetry?range=600&maxPoints=720",
+      { headers: { Cookie: cookie } },
+    );
+    expect(graph.status).toBe(200);
+    const graphBody = await graph.json() as {
+      points: Array<{ refrigeratorValue: number | null }>;
+    };
+    expect(graphBody.points[0]?.refrigeratorValue).toBe(17.8);
+
     const deviceList = await exports.default.fetch(base + "/v1/devices", {
       headers: { Cookie: cookie },
     });
