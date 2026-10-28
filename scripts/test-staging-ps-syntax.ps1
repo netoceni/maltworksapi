@@ -37,4 +37,18 @@ foreach ($Required in @(
 )) {
     if (-not $Provision.Contains($Required)) { throw ("Guarda ausente: " + $Required) }
 }
+# The initial administrative bootstrap token must remain retrievable without
+# being printed or stored in the repository. Only the current Windows identity
+# can decrypt the DPAPI-protected file.
+foreach ($Required in @(
+    "ConvertFrom-SecureString",
+    "lab-staging-bootstrap.dpapi",
+    "Test-Path -LiteralPath `$StagingBootstrapVault",
+    "if (`$Nome -eq `"BOOTSTRAP_SECRET`")",
+    "secret put `$Nome --config `$ConfigName"
+)) {
+    if (-not $Provision.Contains($Required)) {
+        throw ("Bootstrap secret preservation safeguard is missing: " + $Required)
+    }
+}
 Write-Host "PowerShell staging: verificacao estatica concluida." -ForegroundColor Green
