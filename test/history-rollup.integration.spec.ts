@@ -164,7 +164,11 @@ describe("Intelligent History — D1 real SQL rollups", () => {
       fiveMinuteRows: number;
       hourlyRows: number;
       summaries: Array<{ resolutionSeconds: number }>;
+      expiry: { fiveMinuteDays: number; hourlyDays: number };
     };
+    expect(healthBody.expiry).toMatchObject({
+      fiveMinuteDays: 90, hourlyDays: 365,
+    });
     expect(healthBody.retentionSafeThrough).toBeGreaterThan(start);
     expect(healthBody.fiveMinuteRows).toBeGreaterThan(0);
     expect(healthBody.hourlyRows).toBeGreaterThan(0);
