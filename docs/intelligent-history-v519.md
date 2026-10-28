@@ -79,3 +79,43 @@ GET `/v1/devices/:id/history/summary?range=<segundos|all>&maxPoints=<20..1000>&o
 3. Para análises de fermentação, calcular média temporal ponderada e `tempo fora da banda de controle` já na primeira versão comercial?
 4. Nos planos Essencial/Plus/Pro, quais períodos e resoluções serão incluídos?
 5. Comparação automática de dois lotes de uma mesma receita entra no 5.19 ou fica para 5.20?
+
+
+## Revisão de produto e escala — 28/10/2026
+
+### Acesso por plano (proposta provisória, sem faturamento)
+- **Essencial:** amostras brutas até 7 dias na rota de telemetria existente;
+  sem acesso ao endpoint de agregado de longa duração.
+- **Plus:** resumos de 5 minutos, até 90 dias.
+- **Pro:** resumos de 5 minutos e horários, até 365 dias.
+
+A migração aditiva `0018_organization_history_plans.sql` registra a
+elegibilidade por organização. Ausência de linha significa Essencial, sem
+acesso gratuito acidental. `/v1/me` informa `historyPlan` em cada
+membership para a interface, mas o backend revalida o plano em toda consulta
+histórica. Não há checkout, upgrade público ou renovação implementados.
+
+A mudança de plano **não provoca DELETE histórico**. O armazenamento mantém
+90 dias em 5 minutos e 365 dias em horas independentemente de qual cliente
+possa consultar cada resolução. O custo de arquivamento ainda precisa ser
+medido; a matriz comercial será aprovada separadamente.
+
+### Dimensionamento inicial: até 25 controladores
+O limite de limpeza de amostras brutas da branch foi revisado para
+`RETENTION_BATCH_SIZE=400` a cada 10 minutos, ou 57.600/dia. A 1
+amostra/minuto, 25 controladores produzem 36.000/dia, mais eventos
+críticos. O simulador da CI inclui um cenário de 25 controladores com 2%
+de eventos adicionais, verificando que a fila **teórica** de exclusão não
+cresça. Isso não garante capacidade de requests ou cobrança em produção.
+
+O Workers Free **não suporta** 25 controladores emitindo a cada 5s:
+a carga de telemetria seria 432.000 requests/dia, acima do limite gratuito
+de 100.000. A homologação comercial requer planejamento em Workers Paid
+e análise de métricas reais do D1 Paid e Durable Objects.
+
+### Homologação
+Veja `docs/history-staging-25-controllers.md`. Testar migrações `0017`
+e `0018` exclusivamente em D1 separado, com Worker e credenciais de
+staging; verificar backfill, watermarks, limites de escrita, retenção segura
+e a interface Cloud. **Não integrar este PR nem o Cloud PR #11 antes da
+homologação e de uma revisão da política de preços/planos.**
