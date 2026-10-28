@@ -78,7 +78,7 @@ async function pruneSummary(
        WHERE rowid IN (
          SELECT rowid FROM ${table}
           WHERE bucket_start < ?1
-          ORDER BY bucket_start ASC, device_id ASC
+          ORDER BY bucket_start ASC
           LIMIT ?2
        )`,
   ).bind(before, batchSize).run();
