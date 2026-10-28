@@ -61,7 +61,9 @@ function Listar-Aplicacoes {
         $Lote = @($Resposta.result)
         $Todos += $Lote
         $Total = 0
-        if ($null -ne $Resposta.result_info) {
+        if (($Resposta.PSObject.Properties.Name -contains 'result_info') -and
+            $null -ne $Resposta.result_info -and
+            ($Resposta.result_info.PSObject.Properties.Name -contains 'total_count')) {
             $Total = [int]$Resposta.result_info.total_count
         }
         if ($Lote.Count -lt 100 -or ($Total -gt 0 -and $Todos.Count -ge $Total)) {
@@ -73,7 +75,8 @@ function Listar-Aplicacoes {
 
 function Selecionar-Aplicacao($Todas) {
     $Encontradas = @($Todas | Where-Object {
-        $_.domain -eq $HostName -or $_.name -eq $AppName
+        (($_.PSObject.Properties.Name -contains 'domain') -and $_.domain -eq $HostName) -or
+        (($_.PSObject.Properties.Name -contains 'name') -and $_.name -eq $AppName)
     })
     if ($Encontradas.Count -gt 1) {
         throw "Ha varias aplicacoes Access que correspondem ao staging. Revisar pelo painel antes de prosseguir."
@@ -103,17 +106,20 @@ function Verificar-Aplicacao($Aplicacao, $TokenId, [string] $Email) {
     $Policies = (Requisicao-Access "GET" ("/apps/" + $Aplicacao.id + "/policies")).result
     $Servico = @($Policies | Where-Object {
         $_.decision -eq "non_identity" -and @($_.include | Where-Object {
-            $_.service_token.token_id -eq $TokenId
+            ($_.PSObject.Properties.Name -contains 'service_token') -and
+            $null -ne $_.service_token -and $_.service_token.token_id -eq $TokenId
         }).Count -gt 0
     })
     $Pessoa = @($Policies | Where-Object {
         $_.decision -eq "allow" -and @($_.include | Where-Object {
-            $_.email.email -eq $Email
+            ($_.PSObject.Properties.Name -contains 'email') -and
+            $null -ne $_.email -and $_.email.email -eq $Email
         }).Count -gt 0
     })
     $Inseguras = @($Policies | Where-Object {
         $_.decision -eq "bypass" -or @($_.include | Where-Object {
-            $null -ne $_.everyone -or $null -ne $_.any_valid_service_token
+            ($_.PSObject.Properties.Name -contains 'everyone') -or
+            ($_.PSObject.Properties.Name -contains 'any_valid_service_token')
         }).Count -gt 0
     })
     if ($Servico.Count -ne 1 -or $Pessoa.Count -ne 1 -or $Inseguras.Count -gt 0) {
