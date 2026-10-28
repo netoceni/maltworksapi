@@ -8,7 +8,7 @@ import {
 } from "./notifications";
 import { ApiError, type CommandResult, type SensorTelemetry, type TelemetryPayload } from "./types";
 import { publishNotificationsRealtime, publishTelemetryRealtime } from "./realtime";
-import { shouldPersistTelemetry } from "./telemetry-sampling";
+import { shouldPersistRealtimeFailover, shouldPersistTelemetry } from "./telemetry-sampling";
 import { reconcileOtaFromTelemetry } from "./ota";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
@@ -221,8 +221,11 @@ export async function ingestTelemetry(
         deviceId: payload.deviceId,
         message: error instanceof Error ? error.message : String(error),
       });
-      // Fail safe: keep D1 online timestamps and state fresh if the DO is down.
-      if (!persistSample) await env.DB.batch(statements);
+      // Fail safe: a 30-second D1 heartbeat allows offline detection and
+      // remote command fallback, without reverting to 5-second D1 writes.
+      if (!persistSample && shouldPersistRealtimeFailover(previous, now)) {
+        await env.DB.batch(statements);
+      }
     }
   }
 
