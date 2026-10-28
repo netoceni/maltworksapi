@@ -6,7 +6,10 @@ import { completedHistoryWatermark } from "./history-rollup";
  * and audit events are not touched by the cleanup job.
  */
 export const DEFAULT_TELEMETRY_RETENTION_DAYS = 7;
-export const RETENTION_BATCH_SIZE = 250;
+// Provides 57,600 raw-delete capacity/day, allowing headroom above
+// 25 devices x 1 minute (36,000) plus safety-event snapshots.
+// Requires Workers/D1 Paid before operating a 25-device fleet.
+export const RETENTION_BATCH_SIZE = 400;
 export const D1_STORAGE_WARNING_BYTES = 350_000_000;
 const MAX_RETENTION_DAYS = 3650;
 
