@@ -10,7 +10,7 @@ const now = 1_800_000_000;
 const day = 86_400;
 const deviceId = "MW-FA0102030405";
 const start = Math.floor((now - 8 * day) / 3600) * 3600;
-const later = start + day + 30;
+const later = start + day - 60; // Still expired by 60 seconds at test time.
 
 async function samplesRemaining(): Promise<number> {
   return (await env.DB.prepare(
