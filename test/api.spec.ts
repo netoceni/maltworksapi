@@ -1298,7 +1298,7 @@ describe("Maltworks Cloud API 5.18.0", () => {
       "firmware_available",
     ]));
     expect(notificationBody.notifications.find((item) => item.type === "device_offline")?.message)
-      .toContain("mais de 30 segundos");
+      .toContain("mais de 90 segundos");
 
     const defaultPreferences = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/notifications/preferences",
