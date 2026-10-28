@@ -1,7 +1,7 @@
 import { requireSession, selectOrganization } from "./auth";
 import { jsonResponse } from "./http";
 import {
-  HISTORY_FIVE_MINUTES, HISTORY_HOUR, type HistoryResolution,
+  HISTORY_FIVE_MINUTES, HISTORY_HOUR, completeHistoryUntil, type HistoryResolution,
 } from "./history-rollup";
 import { ApiError } from "./types";
 
@@ -132,7 +132,9 @@ export async function aggregatedDeviceHistory(
     bucketSeconds: options.outputBucketSeconds,
     sourceResolutionSeconds: options.sourceResolutionSeconds,
     completeThrough: watermark?.processedUntil ?? null,
-    status: watermark ? "available" : "warming_up",
+    status: !watermark ? "warming_up" :
+      watermark.processedUntil < completeHistoryUntil(now, options.sourceResolutionSeconds)
+        ? "catching_up" : "available",
     points: rows.results,
     totalPoints: rows.results.length,
     truncated: rows.results.length >= options.requestedMaxPoints,
