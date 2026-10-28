@@ -266,6 +266,23 @@ export class RealtimeHub extends DurableObject<Env> {
   }
 
   private async touchPresence(deviceId: string, lastSeenAt: number): Promise<void> {
+    // On the Free pilot the ESP sends HTTP telemetry and WebSocket heartbeats
+    // every 30 seconds. Coalesce near-simultaneous updates to keep Durable
+    // Object SQL writes and alarm rescheduling well below daily quotas.
+    const previous = this.ctx.storage.sql.exec<{
+      lastSeenAt: number; deadlineAt: number; online: number;
+    }>(
+      "SELECT last_seen_at AS lastSeenAt, deadline_at AS deadlineAt, online " +
+      "FROM device_presence WHERE device_id = ?",
+      deviceId,
+    ).toArray()[0];
+    if (previous?.online === 1 &&
+        previous.deadlineAt > lastSeenAt &&
+        lastSeenAt >= previous.lastSeenAt &&
+        lastSeenAt - previous.lastSeenAt < 20) {
+      return;
+    }
+
     const deadlineAt = lastSeenAt + OFFLINE_AFTER_SECONDS;
     this.ctx.storage.sql.exec(
       `INSERT INTO device_presence (device_id, last_seen_at, deadline_at, online)
