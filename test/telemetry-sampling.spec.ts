@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   shouldPersistTelemetry,
+  shouldPersistRealtimeFailover,
   TELEMETRY_PERSIST_INTERVAL_SECONDS,
+  TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS,
   type LastPersistedTelemetry,
 } from "../src/telemetry-sampling";
 import type { TelemetryPayload } from "../src/types";
@@ -130,6 +132,15 @@ describe("event-aware D1 sampling", () => {
     expect(shouldPersistTelemetry(current, { ...persisted(), stateJson: "{}" }, first.sentAt + 5)).toBe(true);
     expect(shouldPersistTelemetry(current, { ...persisted(), offlineActive: 1 }, first.sentAt + 5)).toBe(true);
     expect(shouldPersistTelemetry(current, persisted(), first.sentAt - 1)).toBe(true);
+  });
+
+  it("rate-limits D1 failover if the Durable Object becomes unavailable", () => {
+    expect(TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS).toBe(30);
+    expect(shouldPersistRealtimeFailover(null, first.sentAt)).toBe(true);
+    expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 5)).toBe(false);
+    expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 29)).toBe(false);
+    expect(shouldPersistRealtimeFailover(persisted(), first.sentAt + 30)).toBe(true);
+    expect(shouldPersistRealtimeFailover(persisted(), first.sentAt - 1)).toBe(true);
   });
 
   it("persists command acknowledgement resolution once then returns to sampling", () => {
