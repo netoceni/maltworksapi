@@ -60,6 +60,22 @@ describe("D1 telemetry retention (real SQL)", () => {
     ).bind(now - 7 * day, 250).all<{ detail: string }>();
     expect(plan.results.some((row) => row.detail.includes("idx_telemetry_received_at_id"))).toBe(true);
 
+    // If intelligent-history aggregation has not completed, no expired
+    // sample may be deleted. This is the production data-loss guard.
+    const beforeRollup = await pruneExpiredTelemetry(env.DB, now, 7, 250);
+    expect(beforeRollup.deletedRows).toBe(0);
+
+    // Simulate archived coverage; a separate integration test verifies the
+    // actual rollup SQL and advancement of these watermarks.
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO history_rollup_watermarks (resolution_seconds, processed_until, updated_at) VALUES (300, ?1, ?1)",
+      ).bind(now),
+      env.DB.prepare(
+        "INSERT INTO history_rollup_watermarks (resolution_seconds, processed_until, updated_at) VALUES (3600, ?1, ?1)",
+      ).bind(now),
+    ]);
+
     const first = await pruneExpiredTelemetry(env.DB, now, 7, 1);
     expect(first.deletedRows).toBe(1);
 
