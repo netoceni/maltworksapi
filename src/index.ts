@@ -16,6 +16,7 @@ import {
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
 import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
+import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
 import { runD1DailyHealth, shouldRunD1DailyHealth } from "./d1-health";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
 import {
@@ -88,6 +89,16 @@ export default {
   },
   scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
     ctx.waitUntil((async () => {
+      // Archiving must precede pruning, never the other way around.
+      if (shouldRollupHistory(controller.scheduledTime)) {
+        try {
+          await runIntelligentHistoryRollup(env, controller.scheduledTime);
+        } catch (error) {
+          console.error("History rollup failed; raw retention remains guarded", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       if (shouldPruneTelemetry(controller.scheduledTime)) {
         try {
           await runTelemetryRetention(env, controller.scheduledTime);
