@@ -65,16 +65,17 @@ describe("D1 telemetry retention (real SQL)", () => {
     const beforeRollup = await pruneExpiredTelemetry(env.DB, now, 7, 250);
     expect(beforeRollup.deletedRows).toBe(0);
 
-    // Simulate archived coverage; a separate integration test verifies the
-    // actual rollup SQL and advancement of these watermarks.
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT INTO history_rollup_watermarks (resolution_seconds, processed_until, updated_at) VALUES (300, ?1, ?1)",
-      ).bind(now),
-      env.DB.prepare(
-        "INSERT INTO history_rollup_watermarks (resolution_seconds, processed_until, updated_at) VALUES (3600, ?1, ?1)",
-      ).bind(now),
-    ]);
+    // One summary resolution alone must never authorize deletion.
+    await env.DB.prepare(
+      "INSERT INTO history_rollup_watermarks (resolution_seconds, processed_until, updated_at) VALUES (300, ?1, ?1)",
+    ).bind(now).run();
+    expect((await pruneExpiredTelemetry(env.DB, now, 7, 250)).deletedRows).toBe(0);
+
+    // Simulate coverage by BOTH resolutions. The separate history integration
+    // test verifies real SQL aggregation and watermark advancement.
+    await env.DB.prepare(
+      "INSERT INTO history_rollup_watermarks (resolution_seconds, processed_until, updated_at) VALUES (3600, ?1, ?1)",
+    ).bind(now).run();
 
     const first = await pruneExpiredTelemetry(env.DB, now, 7, 1);
     expect(first.deletedRows).toBe(1);
