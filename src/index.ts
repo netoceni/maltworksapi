@@ -75,7 +75,7 @@ import {
 
 export { RealtimeHub };
 
-const API_VERSION = "5.18.0";
+const API_VERSION = "5.19.0";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
