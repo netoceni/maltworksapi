@@ -13,6 +13,8 @@ import { ApiError, type TelemetryPayload } from "./types";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/u;
 const DEVICE_TAG_PREFIX = "device:";
+const LIVE_HISTORY_SECONDS = 15 * 60;
+const LIVE_HISTORY_MAX_POINTS = 180; // 15 minutes at 5-second cadence.
 
 interface SocketAttachment {
   role: "browser" | "device";
@@ -31,10 +33,25 @@ export interface RealtimeDeviceSnapshot {
   state: TelemetryPayload | null;
 }
 
+export interface RealtimeHistoryPoint {
+  receivedAt: number;
+  sentAt: number;
+  refrigeratorValue: number | null;
+  thermalWellValue: number | null;
+  setpoint: number;
+  controlState: string;
+  cooling: number;
+  heating: number;
+  alarmsActive: number;
+  rssi: number;
+}
+
 export class RealtimeHub extends DurableObject<Env> {
   // No D1 writes for per-packet live state. Hibernation can clear this map;
   // the persisted D1 snapshot remains the durable fallback.
   private readonly latestTelemetry = new Map<string, { receivedAt: number; state: TelemetryPayload }>();
+  // A short volatile chart buffer replaces redundant 5-second D1 writes.
+  private readonly recentTelemetry = new Map<string, RealtimeHistoryPoint[]>();
   // Reject delayed packets from a boot that was already superseded.
   private readonly retiredBoots = new Map<string, string[]>();
 
@@ -115,6 +132,25 @@ export class RealtimeHub extends DurableObject<Env> {
     }
 
     this.latestTelemetry.set(payload.deviceId, { receivedAt, state: payload });
+    const historyPoint: RealtimeHistoryPoint = {
+      receivedAt,
+      sentAt: payload.sentAt,
+      refrigeratorValue: payload.temperatures.refrigerator.value,
+      thermalWellValue: payload.temperatures.thermalWell.value,
+      setpoint: payload.control.setpoint,
+      controlState: payload.control.state,
+      cooling: payload.control.cooling ? 1 : 0,
+      heating: payload.control.heating ? 1 : 0,
+      alarmsActive: payload.alarms.active ? 1 : 0,
+      rssi: payload.network.rssi,
+    };
+    const cutoff = receivedAt - LIVE_HISTORY_SECONDS;
+    const prior = this.recentTelemetry.get(payload.deviceId) ?? [];
+    const next = prior.filter((point) => point.receivedAt > cutoff && point.receivedAt !== receivedAt);
+    next.push(historyPoint);
+    if (next.length > LIVE_HISTORY_MAX_POINTS) next.splice(0, next.length - LIVE_HISTORY_MAX_POINTS);
+    this.recentTelemetry.set(payload.deviceId, next);
+
     await this.touchPresence(payload.deviceId, receivedAt);
     // Another HTTP request may have published a newer state during the await.
     if (this.latestTelemetry.get(payload.deviceId)?.state === payload) {
@@ -141,6 +177,20 @@ export class RealtimeHub extends DurableObject<Env> {
       receivedAt: cached?.receivedAt ?? null,
       state: cached?.state ?? null,
     };
+  }
+
+  /** Ephemeral high-resolution graph data. No D1 writes, no permanent promise. */
+  getRecentTelemetry(
+    deviceId: string,
+    since: number,
+    maximum = LIVE_HISTORY_MAX_POINTS,
+  ): RealtimeHistoryPoint[] {
+    const cutoff = Math.max(since, epochSeconds() - LIVE_HISTORY_SECONDS);
+    const limit = Math.max(1, Math.min(maximum, LIVE_HISTORY_MAX_POINTS));
+    return (this.recentTelemetry.get(deviceId) ?? [])
+      .filter((point) => point.receivedAt >= cutoff)
+      .slice(-limit)
+      .reverse();
   }
 
   publishNotificationsChanged(): void {
