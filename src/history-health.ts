@@ -1,6 +1,9 @@
 import { requireSystemAdmin } from "./admin";
 import { jsonResponse } from "./http";
 import {
+  historyExpiryPolicy, HISTORY_5MIN_PRUNE_BATCH, HISTORY_HOURLY_PRUNE_BATCH,
+} from "./history-retention";
+import {
   completedHistoryWatermark, completeHistoryUntil,
   HISTORY_FIVE_MINUTES, HISTORY_HOUR,
 } from "./history-rollup";
@@ -14,7 +17,15 @@ export async function adminIntelligentHistoryHealth(
 ): Promise<Response> {
   await requireSystemAdmin(request, env);
   const now = Math.floor(Date.now() / 1000);
-  const [progress, metrics] = await Promise.all([
+  const settings = env as Env & {
+    HISTORY_5MIN_RETENTION_DAYS?: string;
+    HISTORY_HOURLY_RETENTION_DAYS?: string;
+  };
+  const expiryPolicy = historyExpiryPolicy(
+    settings.HISTORY_5MIN_RETENTION_DAYS,
+    settings.HISTORY_HOURLY_RETENTION_DAYS,
+  );
+  const [progress, metrics, oldest] = await Promise.all([
     env.DB.prepare(
       "SELECT resolution_seconds AS resolutionSeconds, " +
       "processed_until AS processedUntil, updated_at AS updatedAt " +
@@ -25,6 +36,10 @@ export async function adminIntelligentHistoryHealth(
       "(SELECT COUNT(*) FROM history_hourly) AS hourlyRows, " +
       "(SELECT COUNT(*) FROM telemetry) AS rawRows",
     ).first<{ fiveMinuteRows: number; hourlyRows: number; rawRows: number }>(),
+    env.DB.prepare(
+      "SELECT (SELECT MIN(bucket_start) FROM history_5min) AS oldestFiveMinuteBucket, " +
+      "(SELECT MIN(bucket_start) FROM history_hourly) AS oldestHourlyBucket",
+    ).first<{ oldestFiveMinuteBucket: number | null; oldestHourlyBucket: number | null }>(),
   ]);
 
   const summaries = [HISTORY_FIVE_MINUTES, HISTORY_HOUR].map((resolution) => {
@@ -47,6 +62,14 @@ export async function adminIntelligentHistoryHealth(
     fiveMinuteRows: metrics?.fiveMinuteRows ?? 0,
     hourlyRows: metrics?.hourlyRows ?? 0,
     retentionSafeThrough: await completedHistoryWatermark(env.DB),
+    expiry: {
+      fiveMinuteDays: expiryPolicy.fiveMinuteDays,
+      hourlyDays: expiryPolicy.hourlyDays,
+      maxFineDeletesEvery10Minutes: HISTORY_5MIN_PRUNE_BATCH,
+      maxHourlyDeletesEvery10Minutes: HISTORY_HOURLY_PRUNE_BATCH,
+      oldestFiveMinuteBucket: oldest?.oldestFiveMinuteBucket ?? null,
+      oldestHourlyBucket: oldest?.oldestHourlyBucket ?? null,
+    },
     summaries, requestId,
   });
 }
