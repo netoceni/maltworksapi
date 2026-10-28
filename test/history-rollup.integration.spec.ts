@@ -127,6 +127,7 @@ describe("Intelligent History — D1 real SQL rollups", () => {
       base + "/v1/devices/" + deviceId + "/history/summary?range=2592000",
     );
     expect(unauthenticated.status).toBe(401);
+    expect((await exports.default.fetch(base + "/v1/admin/history/health")).status).toBe(401);
 
     const bootstrap = await exports.default.fetch(base + "/v1/auth/bootstrap", {
       method: "POST",
@@ -153,6 +154,22 @@ describe("Intelligent History — D1 real SQL rollups", () => {
     await env.DB.prepare(
       "UPDATE devices SET organization_id = ?1, status = 'active' WHERE id = ?2",
     ).bind(organizationId, deviceId).run();
+
+    const health = await exports.default.fetch(base + "/v1/admin/history/health", {
+      headers: { Cookie: cookie },
+    });
+    expect(health.status).toBe(200);
+    const healthBody = await health.json() as {
+      retentionSafeThrough: number | null;
+      fiveMinuteRows: number;
+      hourlyRows: number;
+      summaries: Array<{ resolutionSeconds: number }>;
+    };
+    expect(healthBody.retentionSafeThrough).toBeGreaterThan(start);
+    expect(healthBody.fiveMinuteRows).toBeGreaterThan(0);
+    expect(healthBody.hourlyRows).toBeGreaterThan(0);
+    expect(healthBody.summaries.map((value) => value.resolutionSeconds)).toEqual([300, 3600]);
+    expect(JSON.stringify(healthBody)).not.toContain(deviceId);
 
     const fiveMinute = await exports.default.fetch(
       base + "/v1/devices/" + deviceId + "/history/summary?range=2592000&maxPoints=720",
