@@ -111,6 +111,13 @@ describe("sampled HTTP telemetry / DO realtime / D1 integration", () => {
     expect(await latest.json()).toMatchObject({
       state: { sequence: 2, temperatures: { refrigerator: { value: 17.8 } } },
     });
+    const deviceList = await exports.default.fetch(base + "/v1/devices", {
+      headers: { Cookie: cookie },
+    });
+    expect(deviceList.status).toBe(200);
+    expect(await deviceList.json()).toMatchObject({
+      devices: [{ id: deviceId, refrigeratorValue: 17.8 }],
+    });
 
     const alarm = sample(3);
     alarm.alarms = {
@@ -133,6 +140,40 @@ describe("sampled HTTP telemetry / DO realtime / D1 integration", () => {
     // A stale D1 timestamp must not block authorized commands.
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
       .bind(Math.floor(Date.now() / 1000) - 100, deviceId).run();
+    const refreshedList = await exports.default.fetch(base + "/v1/devices", {
+      headers: { Cookie: cookie },
+    });
+    const refreshedBody = await refreshedList.json() as {
+      devices: Array<{ lastSeenAt: number }>;
+    };
+    expect(refreshedBody.devices[0]!.lastSeenAt).toBeGreaterThan(Math.floor(Date.now() / 1000) - 30);
+
+    const admin = await exports.default.fetch(base + "/v1/admin/overview", {
+      headers: { Cookie: cookie },
+    });
+    expect(admin.status).toBe(200);
+    expect(await admin.json()).toMatchObject({ overview: { devicesOnline: 1 } });
+
+    const adminUsers = await exports.default.fetch(base + "/v1/admin/users", {
+      headers: { Cookie: cookie },
+    });
+    expect(adminUsers.status).toBe(200);
+    expect(await adminUsers.json()).toMatchObject({
+      users: [{ onlineDeviceCount: 1 }],
+    });
+
+    // OTA must see the live device as online, even though there is no
+    // firmware release available in this isolated test database.
+    const preflight = await exports.default.fetch(base + "/v1/devices/" + deviceId + "/firmware/update", {
+      method: "POST",
+      headers: { Cookie: cookie, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(preflight.status).toBe(404);
+    expect(await preflight.json()).toMatchObject({
+      error: { code: "FIRMWARE_NOT_AVAILABLE" },
+    });
+
     const setpoint = await exports.default.fetch(base + "/v1/devices/" + deviceId + "/commands/setpoint", {
       method: "POST",
       headers: { Cookie: cookie, "Content-Type": "application/json" },
