@@ -4,6 +4,7 @@ import {
   HISTORY_FIVE_MINUTES, HISTORY_HOUR, completeHistoryUntil, type HistoryResolution,
 } from "./history-rollup";
 import { ApiError } from "./types";
+import { historyEntitlements, requireHistoryPlanRange } from "./history-plans";
 
 const DAY = 86_400;
 const YEAR = 365 * DAY;
@@ -84,6 +85,17 @@ export async function aggregatedDeviceHistory(
   const options = historyQueryOptions(
     url.searchParams.get("range"), url.searchParams.get("maxPoints"),
   );
+  // The organization's plan comes from a DB-backed session membership.
+  // Client-side controls are purely informative; API authorization is final.
+  const membership = session.memberships.find((item) => item.organizationId === organizationId);
+  const entitlements = historyEntitlements(membership?.historyPlan);
+  requireHistoryPlanRange(entitlements, options.rangeSeconds);
+  if (!entitlements.canUseFiveMinuteArchive) {
+    throw new ApiError(
+      403, "HISTORY_PLAN_REQUIRED",
+      "O historico agregado esta disponivel nos planos Plus e Pro.",
+    );
+  }
   const now = Math.floor(Date.now() / 1000);
   const since = now - options.rangeSeconds;
   // Include the first source bucket if it partially overlaps the requested range.
@@ -129,6 +141,8 @@ export async function aggregatedDeviceHistory(
     ok: true,
     deviceId,
     source: "d1_aggregate",
+    historyPlan: entitlements.plan,
+    maximumRangeSeconds: entitlements.maxRangeSeconds,
     range: url.searchParams.get("range") ?? String(30 * DAY),
     from: since,
     to: now,
