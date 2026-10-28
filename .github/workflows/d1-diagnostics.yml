@@ -50,10 +50,29 @@ jobs:
               (SELECT COUNT(*) FROM telemetry
                 WHERE received_at >= unixepoch('now') - 86400) AS rows_last_24h,
               (SELECT COUNT(*) FROM telemetry
+                WHERE received_at >= unixepoch('now') - 3600) AS rows_last_hour,
+              (SELECT COUNT(*) FROM telemetry
+                WHERE received_at >= unixepoch('now') - 3600) * 24 AS hourly_projected_rows_per_day,
+              (SELECT COUNT(*) FROM telemetry
+                WHERE received_at >= unixepoch('now') - 3600) * 72 AS hourly_estimated_minimum_writes_per_day,
+              (SELECT COUNT(*) FROM telemetry
+                WHERE received_at >= unixepoch('now') - 3600) * 192 AS hourly_approximate_writes_per_day,
+              (SELECT COUNT(DISTINCT device_id) FROM telemetry
+                WHERE received_at >= unixepoch('now') - 86400) AS active_devices_24h,
+              (SELECT COUNT(*) FROM telemetry
                 WHERE received_at < unixepoch('now') - 604800) AS expired_rows_7d,
               (SELECT MIN(received_at) FROM telemetry) AS oldest_received_at,
               (SELECT MAX(received_at) FROM telemetry) AS newest_received_at;" \
             | tee d1-diagnostics/telemetry.json
+
+          # Confirm whether the daily 09:05 BRT monitor actually saved data.
+          # No user or device identifiers are exported from this public workflow.
+          npx wrangler d1 execute DB --remote --json \
+            --command "SELECT day_utc, sampled_at, size_bytes,
+                     telemetry_rows, rows_last_24h, expired_rows, level
+                  FROM d1_health_daily
+                 ORDER BY day_utc DESC LIMIT 7;" \
+            | tee d1-diagnostics/health.json
 
           # PRAGMA index_list only reads index metadata.
           npx wrangler d1 execute DB --remote --json \
@@ -74,6 +93,17 @@ jobs:
             echo '```json'
             cat d1-diagnostics/telemetry.json
             echo '```'
+            echo ""
+            echo "### Last seven D1 health snapshots"
+            echo 'Datas anteriores ao primeiro monitoramento podem nao existir.'
+            echo 'O snapshot real de hoje confirma a execucao do cron; workflow verde sozinho nao comprova coleta.'
+            echo 'Binario de diagnostico e apenas SELECT; nao executa alerta nem limpeza.'
+            echo 'Para estimativas de ingestao: 24 x amostras da ultima hora; escritas MINIMAS = 72 x amostras/h; escritas aproximadas = 192 x amostras/h (fator 8 observado, nao e dado de faturamento).'
+            echo 'Cota D1 Free: 100.000 linhas gravadas/dia. Amostras removiveis pela politica atual: 36.000/dia.'
+            echo ""
+            echo '~~~json'
+            cat d1-diagnostics/health.json
+            echo '~~~'
             echo ""
             echo "### Indexes"
             echo '```json'
