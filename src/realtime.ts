@@ -172,7 +172,9 @@ export class RealtimeHub extends DurableObject<Env> {
         presence.device_id,
         now,
       );
-      const notificationIds = await recordOfflineDevice(this.env, presence.device_id, now);
+      const notificationIds = await recordOfflineDevice(
+        this.env, presence.device_id, now, presence.last_seen_at,
+      );
       this.broadcast({
         type: "presence",
         deviceId: presence.device_id,
