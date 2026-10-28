@@ -20,8 +20,8 @@
 Se o ESP32 transmite a cada 5 segundos e a API mantém uma leitura no D1 por minuto em estado estável:
 
 - A curva em tempo real (Durable Object) pode exibir até 15 minutos de dados a cada ~5 segundos, **voláteis**.
-- O bruto no D1 contém tipicamente uma amostra por 60 segundos, mais mudanças de estado/alarmes/comandos.
-- Um resumo de 5 minutos contém tipicamente 5 amostras persistidas, e o horário cerca de 60 amostras.
+- No piloto Free de 10 controladores, o bruto no D1 contém tipicamente uma amostra por 180 segundos, além de mudanças de estado/alarmes/comandos (API #17 e firmware #3 pendentes).
+- Um resumo de 5 minutos contém tipicamente 1 a 2 amostras persistidas, e o horário cerca de 20 (fora transições extras), se aplicada a cadência Free.
 - As médias são **médias de amostras observadas**, e não médias físicas ponderadas por duração de tempo. Eventos que geram mais amostras podem introduzir viés. Futuras versões podem calcular `time_weighted_mean` com pesos por intervalo entre amostras.
 - Mínimos e máximos dos resumos se referem somente a amostras persistidas, não a todas as leituras de 5 segundos feitas pelo Controller.
 
@@ -48,7 +48,7 @@ Se o ESP32 transmite a cada 5 segundos e a API mantém uma leitura no D1 por min
 
 **A rotina de 90/365 dias está implementada e testada neste PR, mas NÃO está publicada em produção.** Os prazos são defaults de desenvolvimento, independentes dos futuros direitos comerciais dos planos. Esses direitos e a política de arquivamento R2 permanecem por decidir.
 
-A [simulação de 1 a 100 controladores](history-capacity-study-20261028.md) mostrou que 5 controllers a 5s usam 86.400 requisições/dia no Worker Free e que, com 25, a limpeza bruta de 36.000 registros/dia chega ao teto mesmo sem eventos. Para 50/100 controladores, o plano gratuito e a capacidade de exclusão bruta NÃO são suficientes. Não confundir performance de SQLite local com métricas faturáveis do D1.
+O dimensionamento **atual** é para 10 controladores no Free, com HTTP e WebSocket a 30s, D1 a 180s, timeout offline de 90s e limpeza bruta de 250/10min. A simulação principal está em [history-free-tier-10.md](history-free-tier-10.md). O estudo anterior de 25/50/100 aparelhos é um cenário de expansão em plano pago, não o tamanho do piloto Free.
    
 ## Contratos da API
 
@@ -65,11 +65,11 @@ GET `/v1/devices/:id/history/summary?range=<segundos|all>&maxPoints=<20..1000>&o
 1. CI TypeScript + todos os testes D1 aprovados no último commit dos PRs API e Cloud.
 2. Conferir em testes isolados idempotência, nulos, buckets UTC, cobertura 5min/hora, interrupção/reinício e impossibilidade de prune sem ambos os marcadores.
 3. Testar com mais de um dispositivo, diferentes organizações e amostras com `NULL`, erros ou relógio não sincronizado.
-4. Exercitar em homologação contínua pelo menos 7 dias de tráfego com eventos e falhas. O teste local de 24h de 1/5/10/25/50/100 dispositivos demonstrou que **o limite Free não comportará com segurança todas essas frotas**; não publicar prometendo escalabilidade gratuita.
-5. Revalidar os prazos de 90/365 dias, o uso do plano Cloudflare Paid e o orçamento de `rowsWritten`; a rotina limitada de expiração já está implementada, sem merge.
+4. Exercitar em homologação isolada cenários de 1/5/10 controladores, com HTTP/WS 30s e D1 180s, eventos e falhas; medir Workers, DO e D1 por quotas independentes. O Free não garante capacidade para dispositivos adicionais ou uso anormal da plataforma.
+5. Revalidar os prazos de 90/365 dias e as métricas reais de `rowsWritten`, DO e Workers Free; se quotas forem ultrapassadas, ativar plano pago ou reduzir tráfego antes de lançar.
 6. Simular falha do cron por várias horas: a retenção bruta pausa, o backfill é retomado de forma transacional e o indicador `catching_up` é mostrado.
 7. Validar a interface 30/90/365 dias e exportação CSV, inclusive com 0 pontos e durante backfill.
-8. Verificar manualmente a mudança de status por plano se a função for comercializada; hoje não existe enforcement de assinatura.
+8. Verificar manualmente o entitlement de histórico por plano já aplicado na API; não existe ainda cobrança/renovação automática nem atribuição comercial de assinatura.
 9. Revisar a migration e backups do banco recuperado antes de permitir que a branch alcance `main`.
 
 ## Decisões para a próxima conversa
@@ -100,22 +100,26 @@ A mudança de plano **não provoca DELETE histórico**. O armazenamento mantém
 possa consultar cada resolução. O custo de arquivamento ainda precisa ser
 medido; a matriz comercial será aprovada separadamente.
 
-### Dimensionamento inicial: até 25 controladores
-O limite de limpeza de amostras brutas da branch foi revisado para
-`RETENTION_BATCH_SIZE=400` a cada 10 minutos, ou 57.600/dia. A 1
-amostra/minuto, 25 controladores produzem 36.000/dia, mais eventos
-críticos. O simulador da CI inclui um cenário de 25 controladores com 2%
-de eventos adicionais, verificando que a fila **teórica** de exclusão não
-cresça. Isso não garante capacidade de requests ou cobrança em produção.
+### Dimensionamento inicial: 10 controladores no plano Free
+A limpeza bruta mantém `RETENTION_BATCH_SIZE=250` a cada 10 minutos
+(36.000/dia). Dez controladores geram cerca de **4.800 snapshots/dia** em
+estado estável com D1 a 180 segundos, mais eventos críticos, permanecendo
+bem abaixo da capacidade de remoção diária.
 
-O Workers Free **não suporta** 25 controladores emitindo a cada 5s:
-a carga de telemetria seria 432.000 requests/dia, acima do limite gratuito
-de 100.000. A homologação comercial requer planejamento em Workers Paid
-e análise de métricas reais do D1 Paid e Durable Objects.
+O firmware terá padrões de telemetria HTTP e heartbeat WebSocket a 30s
+(Controller PR #3), enquanto a API terá snapshots 180s e presença offline
+90s (API PR #17). **Os PRs ainda precisam de validação/publicação; a
+branch de Histórico #14 não modifica a configuração da API em produção.**
+
+No Free, 10 controladores a 30s enviam 28.800 requisições HTTP/dia e
+28.800 mensagens WS/dia. As mensagens WS e os repasses HTTP consomem
+também cota separada do DO. Monitorar a taxa real e as 100 mil operações
+diárias de escrita D1 antes de escalar. Ver `docs/history-free-tier-10.md`.
 
 ### Homologação
-Veja `docs/history-staging-25-controllers.md`. Testar migrações `0017`
-e `0018` exclusivamente em D1 separado, com Worker e credenciais de
-staging; verificar backfill, watermarks, limites de escrita, retenção segura
-e a interface Cloud. **Não integrar este PR nem o Cloud PR #11 antes da
-homologação e de uma revisão da política de preços/planos.**
+O plano atual usa `docs/history-staging-free-10.md`. Testar migrações
+`0017` e `0018` exclusivamente em D1 separado, com Worker, DO e
+credenciais de staging. Verificar backfill, watermarks, limites diários
+de **três serviços** (Workers, DO e D1), retenção, segurança e Cloud.
+**Não integrar API #14 ou Cloud #11 antes da homologação.**
+O roteiro de 25 dispositivos fica apenas como estudo de expansão futura.
