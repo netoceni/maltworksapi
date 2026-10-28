@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { RETENTION_BATCH_SIZE } from "../src/retention";
 import {
   assessD1Health,
   D1_HEALTH_CRITICAL_BYTES,
@@ -32,7 +33,7 @@ describe("D1 daily monitoring", () => {
     expect(assessD1Health({ ...normal, rowsLastHour: 720 }).level).toBe("critical");
     expect(720 * 24 * TELEMETRY_MINIMUM_WRITES_PER_SAMPLE).toBeLessThan(D1_FREE_DAILY_WRITE_LIMIT);
     expect(720 * 24 * TELEMETRY_ESTIMATED_WRITES_PER_SAMPLE).toBeGreaterThan(D1_FREE_DAILY_WRITE_LIMIT);
-    expect(assessD1Health({ ...normal, expiredRows: 1_000 }).level).toBe("warning");
+    expect(assessD1Health({ ...normal, expiredRows: RETENTION_BATCH_SIZE * 4 }).level).toBe("warning");
     expect(assessD1Health({ ...normal, expiredRows: RETENTION_DAILY_CAPACITY }).level).toBe("critical");
     expect(assessD1Health({ ...normal, sizeBytes: null }).level).toBe("warning");
   });

@@ -78,6 +78,7 @@ export interface SessionContext {
     organizationId: string;
     organizationName: string;
     role: "owner" | "admin" | "member" | "viewer";
+    historyPlan: "essential" | "plus" | "pro";
   }>;
 }
 

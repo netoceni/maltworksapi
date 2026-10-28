@@ -1,9 +1,16 @@
+import { completedHistoryWatermark } from "./history-rollup";
+
 /**
  * Retention for detailed telemetry only.
  * Accounts, credentials, device_latest_state, recipes, fermentation records
  * and audit events are not touched by the cleanup job.
  */
 export const DEFAULT_TELEMETRY_RETENTION_DAYS = 7;
+// Provides 57,600 raw-delete capacity/day, allowing headroom above
+// 25 devices x 1 minute (36,000) plus safety-event snapshots.
+// Requires Workers/D1 Paid before operating a 25-device fleet.
+// 250 x 144 cleanups/day = 36,000 raw rows/day. The Free 10-controller
+// pilot generates ~4,800 stable snapshots/day (plus safety transitions).
 export const RETENTION_BATCH_SIZE = 250;
 export const D1_STORAGE_WARNING_BYTES = 350_000_000;
 const MAX_RETENTION_DAYS = 3650;
@@ -54,6 +61,14 @@ export async function pruneExpiredTelemetry(
     throw new Error("Telemetry pruning batch must be between 1 and 1000 rows.");
   }
   const cutoff = Math.floor(nowSeconds) - retentionDays * 86_400;
+  const archivedUntil = await completedHistoryWatermark(db);
+  // Never remove raw data before both 5-minute and hourly summaries cover it.
+  // A missing watermark (first deploy, delayed cron, D1 error) pauses deletion.
+  if (archivedUntil === null || archivedUntil <= 0) {
+    console.warn("Telemetry retention paused: intelligent history catch-up incomplete");
+    return { deletedRows: 0, sizeAfterBytes: null, rowsRead: null, rowsWritten: null };
+  }
+  const safeCutoff = Math.min(cutoff, archivedUntil);
   const { meta } = await db.prepare(
     `DELETE FROM telemetry
       WHERE id IN (
@@ -62,7 +77,7 @@ export async function pruneExpiredTelemetry(
          ORDER BY received_at ASC, id ASC
          LIMIT ?2
       )`,
-  ).bind(cutoff, limit).run();
+  ).bind(safeCutoff, limit).run();
   return {
     deletedRows: meta.changes ?? 0,
     sizeAfterBytes: Number.isFinite(meta.size_after) ? meta.size_after : null,

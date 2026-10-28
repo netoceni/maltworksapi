@@ -26,3 +26,14 @@ jobs:
         run: npm run check
       - name: Run tests against isolated D1
         run: npm test
+      - name: Smoke-test local SQLite fleet simulator
+        run: |
+          python3 scripts/simulate_history_capacity.py \
+            --devices 1,5,10 \
+            --payload-bytes 900 \
+            --event-percent 2 \
+            --http-seconds 30 \
+            --heartbeat-seconds 30 \
+            --persist-seconds 180 \
+            --output /tmp/maltworks-history-simulation.json
+          python3 -c "import json; p=json.load(open('/tmp/maltworks-history-simulation.json')); s=p['scenarios']; assert len(s)==3; f=next(x for x in s if x['devices']==10); assert f['raw_backlog_growth_day']==0; assert f['http_requests_day']<=80000; assert f['do_total_requests_day']<=80000; assert f['d1_daily_writes_heuristic_estimate']<=80000; assert f['steady_db_mb_projection']<=400"
