@@ -1,11 +1,11 @@
 import type { TelemetryPayload } from "./types";
 
 /**
- * Live telemetry continues at the device cadence (normally 5 seconds).
- * Store a D1 snapshot at most once per 60 seconds under steady conditions.
+ * Live telemetry continues at the device cadence (30 seconds for Free pilot).
+ * Store a D1 snapshot at most once per 180 seconds under steady conditions.
  * Any safety-relevant transition bypasses the timer.
  */
-export const TELEMETRY_PERSIST_INTERVAL_SECONDS = 60;
+export const TELEMETRY_PERSIST_INTERVAL_SECONDS = 180;
 /** Allowed rollout choices: 0=legacy (no decimation), 30..300=sampled. */
 export function telemetryPersistenceIntervalSeconds(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return TELEMETRY_PERSIST_INTERVAL_SECONDS;
@@ -16,11 +16,11 @@ export function telemetryPersistenceIntervalSeconds(raw: string | undefined): nu
     ? seconds
     : TELEMETRY_PERSIST_INTERVAL_SECONDS;
 }
-export const TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS = 30;
+export const TELEMETRY_REALTIME_FAILOVER_INTERVAL_SECONDS = 180;
 
 /**
  * If the realtime Durable Object is temporarily unavailable, D1 is a
- * low-frequency heartbeat fallback. Do not return to per-packet writes,
+ * low-frequency heartbeat fallback (180 seconds). Never return to per-packet writes,
  * which would exhaust the free database row-write quota during an outage.
  */
 export function shouldPersistRealtimeFailover(

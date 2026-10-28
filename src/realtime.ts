@@ -10,6 +10,7 @@ import {
   recordOfflineDevice,
 } from "./notifications";
 import { ApiError, type TelemetryPayload } from "./types";
+import { maySkipPresenceWrite, type StoredRealtimePresence } from "./realtime-presence";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/u;
 const DEVICE_TAG_PREFIX = "device:";
@@ -266,6 +267,18 @@ export class RealtimeHub extends DurableObject<Env> {
   }
 
   private async touchPresence(deviceId: string, lastSeenAt: number): Promise<void> {
+    // On the Free pilot the ESP sends HTTP telemetry and WebSocket heartbeats
+    // every 30 seconds. Coalesce near-simultaneous updates to keep Durable
+    // Object SQL writes and alarm rescheduling well below daily quotas.
+    const previous = this.ctx.storage.sql.exec<StoredRealtimePresence>(
+      "SELECT last_seen_at AS lastSeenAt, deadline_at AS deadlineAt, online " +
+      "FROM device_presence WHERE device_id = ?",
+      deviceId,
+    ).toArray()[0];
+    if (maySkipPresenceWrite(previous, lastSeenAt)) {
+      return;
+    }
+
     const deadlineAt = lastSeenAt + OFFLINE_AFTER_SECONDS;
     this.ctx.storage.sql.exec(
       `INSERT INTO device_presence (device_id, last_seen_at, deadline_at, online)

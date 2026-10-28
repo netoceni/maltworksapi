@@ -253,7 +253,7 @@ describe("sampled HTTP telemetry / DO realtime / D1 integration", () => {
     // without writing telemetry again or re-creating past alarm notifications.
     const offlineAt = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE devices SET last_seen_at = ?1 WHERE id = ?2")
-      .bind(offlineAt - 50, deviceId).run();
+      .bind(offlineAt - 110, deviceId).run();
     expect(await recordOfflineDevice(env, deviceId, offlineAt)).toHaveLength(1);
     expect((await send(result)).status).toBe(200);
     expect(await countSamples()).toBe(4);
