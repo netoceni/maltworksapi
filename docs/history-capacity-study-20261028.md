@@ -1,3 +1,12 @@
+> **HISTORICO / SUPERADO EM 28/10/2026**: o alvo comercial atual
+> e **10 controladores no Cloudflare Free** (HTTP/WS 30s, D1 180s)
+> com cleanup 250/10min. As contas e exemplos antigos de 25
+> controladores ou cleanup 400 se referem ao estudo anterior, de
+> expansao paga; nao representam a configuracao atual do PR.
+> Consulte [history-free-tier-10.md](history-free-tier-10.md)
+> e [history-staging-free-10.md](history-staging-free-10.md)
+> para decisoes e testes em vigor.
+
 # Maltworks Cloud 5.19 — simulação de capacidade (28/10/2026)
 
 **Status:** estudo local isolado, sem tocar no D1, no Worker ou no hardware
