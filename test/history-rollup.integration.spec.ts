@@ -120,5 +120,79 @@ describe("Intelligent History — D1 real SQL rollups", () => {
     ).bind(deviceId, Math.floor(later / 300) * 300).first<{ samples: number }>();
     expect(archivedLater?.samples).toBe(1);
 
+    // Existing authentication and organization isolation also apply to
+    // the new optional history API. No customer schema is modified here.
+    const base = "https://api.maltworks.com.br";
+    const unauthenticated = await exports.default.fetch(
+      base + "/v1/devices/" + deviceId + "/history/summary?range=2592000",
+    );
+    expect(unauthenticated.status).toBe(401);
+
+    const bootstrap = await exports.default.fetch(base + "/v1/auth/bootstrap", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-bootstrap-secret-with-32-characters",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        organizationName: "Maltworks Historical Tests",
+        displayName: "Test Operator",
+        email: "history@example.com",
+        password: "senha-forte-de-historico-2026",
+      }),
+    });
+    expect(bootstrap.status).toBe(201);
+    const cookie = bootstrap.headers.get("Set-Cookie")?.split(";", 1)[0] ?? "";
+    const me = await exports.default.fetch(base + "/v1/me", {
+      headers: { Cookie: cookie },
+    });
+    const user = await me.json() as {
+      user: { memberships: Array<{ organizationId: string }> };
+    };
+    const organizationId = user.user.memberships[0]!.organizationId;
+    await env.DB.prepare(
+      "UPDATE devices SET organization_id = ?1, status = 'active' WHERE id = ?2",
+    ).bind(organizationId, deviceId).run();
+
+    const fiveMinute = await exports.default.fetch(
+      base + "/v1/devices/" + deviceId + "/history/summary?range=2592000&maxPoints=720",
+      { headers: { Cookie: cookie } },
+    );
+    expect(fiveMinute.status).toBe(200);
+    const summary = await fiveMinute.json() as {
+      source: string;
+      sourceResolutionSeconds: number;
+      completeThrough: number | null;
+      points: Array<{
+        bucketStart: number;
+        samples: number;
+        refrigeratorValue: number | null;
+        refrigeratorMin: number | null;
+        refrigeratorMax: number | null;
+        thermalWellValue: number | null;
+      }>;
+    };
+    expect(summary).toMatchObject({
+      source: "d1_aggregate", sourceResolutionSeconds: 300,
+    });
+    expect(summary.completeThrough).toBeGreaterThan(start);
+    const firstBucket = summary.points.find((point) => point.bucketStart === start);
+    expect(firstBucket).toMatchObject({
+      samples: 3, refrigeratorValue: 20,
+      refrigeratorMin: 18, refrigeratorMax: 22,
+      thermalWellValue: 20,
+    });
+
+    const hourly = await exports.default.fetch(
+      base + "/v1/devices/" + deviceId + "/history/summary?range=all&maxPoints=1000",
+      { headers: { Cookie: cookie } },
+    );
+    expect(hourly.status).toBe(200);
+    const hourlyData = await hourly.json() as {
+      sourceResolutionSeconds: number;
+      points: Array<{ bucketStart: number; samples: number }>;
+    };
+    expect(hourlyData.sourceResolutionSeconds).toBe(3600);
+    expect(hourlyData.points.find((point) => point.bucketStart === start)?.samples).toBe(3);
   });
 });
