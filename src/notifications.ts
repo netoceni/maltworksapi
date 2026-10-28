@@ -119,10 +119,13 @@ export async function recordTelemetryNotifications(
   now: number,
 ): Promise<string[]> {
   if (!previous?.organizationId) return [];
-  if (previous.bootId === payload.bootId && previous.sequence === payload.sequence) return [];
 
+  // Old/retransmitted packets must not recreate alarm/profile transitions.
+  // Still allow an authenticated packet to clear a previous offline alert.
+  const replayed = previous.bootId === payload.bootId &&
+    previous.sequence !== null && payload.sequence <= previous.sequence;
   const created: string[] = [];
-  const oldState = parseTelemetry(previous.stateJson);
+  const oldState = replayed ? null : parseTelemetry(previous.stateJson);
   const base = `${payload.deviceId}:${payload.bootId}:${payload.sequence}`;
   const deviceName = previous.name;
 
@@ -183,7 +186,7 @@ export async function recordTelemetryNotifications(
     }
   }
 
-  if (payload.commandResult?.status === "rejected") {
+  if (!replayed && payload.commandResult?.status === "rejected") {
     created.push(...await createOne(env.DB, {
       organizationId: previous.organizationId,
       deviceId: payload.deviceId,
