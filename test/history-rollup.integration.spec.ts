@@ -155,6 +155,36 @@ describe("Intelligent History — D1 real SQL rollups", () => {
       "UPDATE devices SET organization_id = ?1, status = 'active' WHERE id = ?2",
     ).bind(organizationId, deviceId).run();
 
+    // New accounts default to Essential: never expose paid history by changing
+    // only the browser buttons or URL query.
+    const denied = await exports.default.fetch(
+      base + "/v1/devices/" + deviceId + "/history/summary?range=2592000",
+      { headers: { Cookie: cookie } },
+    );
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({
+      error: { code: "HISTORY_PLAN_REQUIRED" },
+    });
+
+    // Simulate a backoffice entitlement assignment, not a public upgrade API.
+    await env.DB.prepare(
+      "INSERT INTO organization_history_plans(organization_id,plan_code,updated_at) " +
+      "VALUES (?1, 'plus', ?2)",
+    ).bind(organizationId, now).run();
+    const allowedPlus = await exports.default.fetch(
+      base + "/v1/devices/" + deviceId + "/history/summary?range=2592000",
+      { headers: { Cookie: cookie } },
+    );
+    expect(allowedPlus.status).toBe(200);
+    const deniedYear = await exports.default.fetch(
+      base + "/v1/devices/" + deviceId + "/history/summary?range=all",
+      { headers: { Cookie: cookie } },
+    );
+    expect(deniedYear.status).toBe(403);
+    await env.DB.prepare(
+      "UPDATE organization_history_plans SET plan_code = 'pro' WHERE organization_id = ?1",
+    ).bind(organizationId).run();
+
     const health = await exports.default.fetch(base + "/v1/admin/history/health", {
       headers: { Cookie: cookie },
     });
