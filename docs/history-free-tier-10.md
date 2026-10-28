@@ -35,6 +35,12 @@ usuario observa as mudancas pelo Cloud.
   2% de eventos, nao constitui valor garantido nem cobranca.
 - Armazenamento: limite **500 MB por banco**; SQL local aproxima o espaco
   mas nao substitui telemetria e metricas D1 reais.
+- **Resultado da CI [40734506552](https://github.com/netoceni/maltworksapi/actions/runs/40734506552)**,
+  10 controladores, 900 bytes por payload e 2% de eventos:
+  **4.896 brutos/dia, 2.880 agregados 5min/dia, 240 horarios/dia**,
+  **50.304 rows_written/dia estimados** e **90,2 MB projetados em
+  equilibrio**. A latencia e o tamanho derivam de SQLite local, e
+  os rows_written sao uma heuristica, **nao metricas de D1 real**.
 
 O emissor de heartbeat e o servidor DO foram ajustados em PRs separados.
 O DO consolida presenca escrita a intervalos de pelo menos 20s para nao
