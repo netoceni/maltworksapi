@@ -70,6 +70,19 @@ describe("History expiration safety (real isolated D1)", () => {
     expect(await count("history_5min")).toBe(4);
     expect(await count("history_hourly")).toBe(2);
 
+    // The bounded expiry must use the covering bucket index, not a full
+    // table scan or an extra temporary sort across millions of points.
+    for (const table of ["history_5min", "history_hourly"] as const) {
+      const plan = await env.DB.prepare(
+        `EXPLAIN QUERY PLAN SELECT rowid FROM ${table}
+          WHERE bucket_start < ?1 ORDER BY bucket_start ASC LIMIT ?2`,
+      ).bind(now, 250).all<{ detail: string }>();
+      expect(plan.results.some((row) =>
+        row.detail.includes(`idx_${table}_bucket`))).toBe(true);
+      expect(plan.results.some((row) =>
+        row.detail.includes("TEMP B-TREE"))).toBe(false);
+    }
+
     // Before the hourly archive confirms coverage: no derived data is lost.
     const paused = await expireIntelligentHistory(env.DB, now);
     expect(paused).toMatchObject({
