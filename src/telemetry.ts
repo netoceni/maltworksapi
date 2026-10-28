@@ -251,7 +251,7 @@ export async function ingestTelemetry(
         deviceId: payload.deviceId,
         message: error instanceof Error ? error.message : String(error),
       });
-      // Fail safe: a 30-second D1 heartbeat allows offline detection and
+      // Fail safe: an occasional D1 snapshot preserves historical continuity and
       // remote command fallback, without reverting to 5-second D1 writes.
       if (!persistSample && shouldPersistRealtimeFailover(previous, now)) {
         await env.DB.batch(orderedStatements);
