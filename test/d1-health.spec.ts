@@ -3,6 +3,8 @@ import {
   assessD1Health,
   D1_HEALTH_CRITICAL_BYTES,
   D1_HEALTH_WARNING_BYTES,
+  D1_FREE_DAILY_WRITE_LIMIT,
+  TELEMETRY_MINIMUM_WRITES_PER_SAMPLE,
   RETENTION_DAILY_CAPACITY,
   runD1DailyHealth,
   shouldRunD1DailyHealth,
@@ -16,12 +18,17 @@ describe("D1 daily monitoring", () => {
   });
 
   it("detects storage, ingest and expiry backlog risks", () => {
-    const normal = { sizeBytes: 1_146_880, telemetryRows: 294, rowsLast24h: 294, expiredRows: 0 };
+    const normal = { sizeBytes: 1_146_880, telemetryRows: 294, rowsLast24h: 294, rowsLastHour: 15, expiredRows: 0 };
     expect(assessD1Health(normal).level).toBe("normal");
     expect(assessD1Health({ ...normal, sizeBytes: D1_HEALTH_WARNING_BYTES }).level).toBe("warning");
     expect(assessD1Health({ ...normal, sizeBytes: D1_HEALTH_CRITICAL_BYTES }).level).toBe("critical");
     expect(assessD1Health({ ...normal, rowsLast24h: RETENTION_DAILY_CAPACITY * 0.8 }).level).toBe("warning");
     expect(assessD1Health({ ...normal, rowsLast24h: RETENTION_DAILY_CAPACITY }).level).toBe("critical");
+    // 1 new controller at 5 s cadence = 720 readings/hour; 3 -> 2,160/hour.
+    expect(assessD1Health({ ...normal, rowsLastHour: 720 }).level).toBe("normal");
+    expect(assessD1Health({ ...normal, rowsLastHour: 1_200 }).level).toBe("warning");
+    expect(assessD1Health({ ...normal, rowsLastHour: 1_440 }).level).toBe("critical");
+    expect(1_440 * 24 * TELEMETRY_MINIMUM_WRITES_PER_SAMPLE).toBeGreaterThan(D1_FREE_DAILY_WRITE_LIMIT);
     expect(assessD1Health({ ...normal, expiredRows: 1_000 }).level).toBe("warning");
     expect(assessD1Health({ ...normal, expiredRows: RETENTION_DAILY_CAPACITY }).level).toBe("critical");
     expect(assessD1Health({ ...normal, sizeBytes: null }).level).toBe("warning");
@@ -38,7 +45,7 @@ describe("D1 daily monitoring", () => {
           bind(...args: unknown[]) {
             return {
               all: async () => ({
-                results: [{ telemetryRows: 294, rowsLast24h: 294, expiredRows: 0 }],
+                results: [{ telemetryRows: 294, rowsLast24h: 294, rowsLastHour: 15, expiredRows: 0 }],
                 meta: { size_after: 1_146_880 },
               }),
               first: async () => ({ sizeBytes: 1_100_000 }),
@@ -52,6 +59,8 @@ describe("D1 daily monitoring", () => {
     const result = await runD1DailyHealth(env, Date.UTC(2026, 9, 28, 12, 5));
     expect(result.level).toBe("normal");
     expect(result.growthBytes).toBe(46_880);
+    expect(result.rowsLastHour).toBe(15);
+    expect(result.rowsLastHour * 24).toBe(360);
     expect(written).toHaveLength(1);
     expect(written[0]?.[0]).toBe("2026-10-28");
     expect(queries.some((query) => query.includes("FROM telemetry"))).toBe(true);
@@ -67,7 +76,7 @@ describe("D1 daily monitoring", () => {
           bind() {
             return {
               all: async () => ({
-                results: [{ telemetryRows: 90000, rowsLast24h: 40000, expiredRows: 300 }],
+                results: [{ telemetryRows: 90000, rowsLast24h: 40000, rowsLastHour: 2_200, expiredRows: 300 }],
                 meta: { size_after: 380_000_000 },
               }),
               first: async () => null,
