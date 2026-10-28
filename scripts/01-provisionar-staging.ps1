@@ -156,7 +156,7 @@ try {
             Conferir-Staging
             Write-Host "Apenas migracoes no banco NOVO de homologacao:" -ForegroundColor Yellow
             Executar-Wrangler -Parametros @("d1","migrations","list","DB","--remote","--config",$ConfigName)
-            Confirmar-Texto "Aplicar migracoes remotas 0001..0018 SOMENTE em $DatabaseName?" "MIGRAR LAB"
+            Confirmar-Texto "Aplicar migracoes remotas 0001..0018 SOMENTE em ${DatabaseName}?" "MIGRAR LAB"
             Executar-Wrangler -Parametros @("d1","migrations","apply","DB","--remote","--config",$ConfigName)
             Write-Host "Migracoes de homologacao aplicadas. Proximo: -Etapa PublicarPrivado." -ForegroundColor Green
         }
