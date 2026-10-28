@@ -19,6 +19,7 @@ import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
 import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
 import { aggregatedDeviceHistory } from "./history-query";
 import { adminIntelligentHistoryHealth } from "./history-health";
+import { runIntelligentHistoryExpiry, shouldExpireHistory } from "./history-retention";
 import { runD1DailyHealth, shouldRunD1DailyHealth } from "./d1-health";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
 import {
@@ -106,6 +107,15 @@ export default {
           await runTelemetryRetention(env, controller.scheduledTime);
         } catch (error) {
           console.error("Telemetry retention failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      if (shouldExpireHistory(controller.scheduledTime)) {
+        try {
+          await runIntelligentHistoryExpiry(env, controller.scheduledTime);
+        } catch (error) {
+          console.error("Intelligent history expiry failed; archives unchanged if guard blocks", {
             message: error instanceof Error ? error.message : String(error),
           });
         }
