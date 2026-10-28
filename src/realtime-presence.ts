@@ -8,7 +8,7 @@
  */
 export const REALTIME_PRESENCE_MIN_WRITE_INTERVAL_SECONDS = 20;
 
-export interface StoredRealtimePresence {
+export interface StoredRealtimePresence extends Record<string, number> {
   lastSeenAt: number;
   deadlineAt: number;
   online: number;
