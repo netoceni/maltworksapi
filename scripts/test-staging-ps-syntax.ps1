@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Files = @(
     (Join-Path $PSScriptRoot "01-provisionar-staging.ps1"),
-    (Join-Path $PSScriptRoot "02-testar-staging.ps1")
+    (Join-Path $PSScriptRoot "02-testar-staging.ps1"),
+    (Join-Path $PSScriptRoot "03-configurar-access.ps1")
 )
 foreach ($File in $Files) {
     $Tokens = $null
@@ -50,5 +51,25 @@ foreach ($Required in @(
     if (-not $Provision.Contains($Required)) {
         throw ("Bootstrap secret preservation safeguard is missing: " + $Required)
     }
+}
+$Access = Get-Content -LiteralPath $Files[2] -Raw
+foreach ($Required in @(
+    "api-staging.maltworks.com.br",
+    "Read-Host",
+    "-AsSecureString",
+    "ConvertFrom-SecureString",
+    "service_token",
+    "non_identity",
+    "app_launcher_visible",
+    "Listar-Aplicacoes",
+    "Verificar-Aplicacao",
+    "CRIAR ACCESS"
+)) {
+    if (-not $Access.Contains($Required)) {
+        throw ("Cloudflare Access safeguard missing: " + $Required)
+    }
+}
+if ($Access -match '(?i)(^|\s)(bypass|everyone)\s*=\s*\$true') {
+    throw "Access provisioning contains a potentially permissive bypass."
 }
 Write-Host "PowerShell staging: verificacao estatica concluida." -ForegroundColor Green
