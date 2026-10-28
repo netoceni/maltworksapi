@@ -26,6 +26,8 @@ jobs:
         run: npm run check
       - name: Run tests against isolated D1
         run: npm test
+      - name: Test internal Maltworks Lab and staging security gates
+        run: node --test scripts/maltworks-lab*.spec.mjs
       - name: Smoke-test local SQLite fleet simulator
         run: |
           python3 scripts/simulate_history_capacity.py \
