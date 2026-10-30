@@ -9,7 +9,7 @@ param(
     [int] $Controladores = 1,
     [ValidateRange(1,120)]
     [int] $Ciclos = 12,
-    [string] $ZoneId = "",
+    [string] $AccountId = "",
     [switch] $TokenFromClipboard
 )
 
@@ -22,12 +22,12 @@ $BranchExpected = "test/staging-history-lab-free10-20261028"
 $Endpoint = "https://api-staging.maltworks.com.br/v1/telemetry"
 
 
-function Conferir-Rota-No-Painel([string] $Zone, [string] $Worker, [switch] $FromClipboard) {
-    # Cloudflare dashboard-managed Worker Route: verify target via read-only API.
-    if ($Zone -notmatch '^[a-fA-F0-9]{32}$') {
-        throw "Informe -ZoneId com o Zone ID de maltworks.com.br (32 hex)."
+function Conferir-Dominio-No-Painel([string] $Account, [string] $Worker, [switch] $FromClipboard) {
+    # Cloudflare dashboard-managed Custom Domain: verify live target via read-only API.
+    if ($Account -cne "4e8c08f70722d344cf39c362a110d706") {
+        throw "Account ID incorreto para o Maltworks Lab. Nenhum envio sera realizado."
     }
-    Write-Host "Auditoria SOMENTE LEITURA: Workers Routes Read."
+    Write-Host "Auditoria SOMENTE LEITURA: Workers Scripts Read (Custom Domains)."
     if ($FromClipboard) {
         Write-Host "Copie o token Cloudflare no navegador. Nao cole no PowerShell."
         [void](Read-Host "Pressione Enter depois de copiar o token")
@@ -59,27 +59,31 @@ function Conferir-Rota-No-Painel([string] $Zone, [string] $Worker, [switch] $Fro
         throw "Token de consulta vazio. Nada sera enviado."
     }
     try {
-        $Uri = "https://api.cloudflare.com/client/v4/zones/$Zone/workers/routes"
+        $Uri = "https://api.cloudflare.com/client/v4/accounts/$Account/workers/domains?hostname=api-staging.maltworks.com.br"
         $Resposta = Invoke-RestMethod -Method Get -Uri $Uri -ErrorAction Stop -Headers @{
             Authorization = ("Bearer " + $ApiToken)
         }
         if ($Resposta.success -ne $true) {
             throw "API nao confirmou sucesso."
         }
-        $Rotas = @($Resposta.result | Where-Object {
-            $_.pattern -eq "api-staging.maltworks.com.br/*"
+        $Dominios = @($Resposta.result | Where-Object {
+            $_.hostname -ceq "api-staging.maltworks.com.br"
         })
-        if ($Rotas.Count -ne 1 -or $Rotas[0].script -cne $Worker) {
-            throw "Rota staging nao aponta exclusivamente ao Worker esperado."
+        if ($Dominios.Count -ne 1 -or
+            $Dominios[0].service -cne $Worker -or
+            $Dominios[0].zone_name -cne "maltworks.com.br" -or
+            $Dominios[0].enabled -ne $true -or
+            $Dominios[0].previews_enabled -eq $true) {
+            throw "Custom Domain nao corresponde ao Worker de staging isolado e ativo."
         }
     } catch {
         # Never echo HTTP diagnostics with credentials.
-        throw "Falha na auditoria da rota Cloudflare. Confira Zone ID, token Workers Routes Read e destino do Worker; envio bloqueado."
+        throw "Auditoria do Custom Domain falhou. Confira Account ID, token Workers Scripts Read e dominio do Worker; envio bloqueado."
     } finally {
         $ApiToken = $null
         $Seguro = $null
     }
-    Write-Host ("Rota real confirmada: api-staging.maltworks.com.br/* -> " + $Worker) -ForegroundColor Green
+    Write-Host ("Custom Domain ativo confirmado: api-staging.maltworks.com.br -> " + $Worker) -ForegroundColor Green
 }
 
 Push-Location $Root
@@ -103,9 +107,14 @@ try {
     & node $Preflight $ConfigFile
     if ($LASTEXITCODE -ne 0) { throw "Preflight rejeitou o staging." }
     $Config = Get-Content -LiteralPath $ConfigFile -Raw | ConvertFrom-Json
-    # Do not add routes to local Wrangler config only to satisfy this check.
-    # The route is managed by Cloudflare dashboard; audit the live Worker target.
-    Conferir-Rota-No-Painel -Zone $ZoneId -Worker $Config.name -FromClipboard:$TokenFromClipboard
+    # Custom Domains do not appear in Wrangler routes. Check the actual account
+    # mapping and the exact D1 UUID; never modify the staging or production D1.
+    if ($Config.d1_databases.Count -ne 1 -or
+        $Config.d1_databases[0].database_id -cne
+        "26b9ecab-1aaa-4120-93a5-1c409555d28b") {
+        throw "D1 de staging incorreto. Envio bloqueado."
+    }
+    Conferir-Dominio-No-Painel -Account $AccountId -Worker $Config.name -FromClipboard:$TokenFromClipboard
 
     foreach ($Name in @(
         "MALTWORKS_LAB_STAGING_TOKENS_JSON",
