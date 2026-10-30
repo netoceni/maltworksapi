@@ -15,8 +15,12 @@ export function validateLabStageConfig(config) {
       config.workers_dev !== false || config.preview_urls !== false) {
     throw new Error("Staging must use a dedicated Worker and disable workers.dev and preview URLs");
   }
-  if (config.triggers?.crons?.length) {
-    throw new Error("Lab staging cron is disabled until resource budgets are validated");
+  // The five-minute rollup cadence is approved for the isolated 10-device Lab.
+  // Reject unexpected schedules, including multiple crons and more frequent runs.
+  const crons = config.triggers?.crons ?? [];
+  if (!Array.isArray(crons) || crons.length > 1 ||
+      crons.some((cron) => cron !== "*/5 * * * *")) {
+    throw new Error("Lab staging only permits the approved five-minute rollup cron");
   }
   if (config.r2_buckets?.length || config.send_email?.length || config.queues ||
       config.services?.length) {
@@ -73,7 +77,8 @@ export function validateLabStageConfig(config) {
     databaseId: db.database_id,
     routesConfigured: routes.length > 0,
     workersDevDisabled: true,
-    cronDisabled: true,
+    cronDisabled: crons.length === 0,
+    cronSchedule: crons.length ? crons[0] : null,
     emailAndFirmwareBindingsDisabled: true,
   };
 }
