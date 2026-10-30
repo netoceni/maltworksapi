@@ -102,7 +102,9 @@ foreach ($Required in @(
     "LAB_STAGING_ROLLUP_ONLY",
     "Read-Host",
     "EnviarPiloto",
+    "EnviarDez",
     "ENVIAR 1 LAB",
+    "ENVIAR 10 LAB",
     "lab-staging-ten-tokens.dpapi",
     "MW-C00000000000",
     "9b64b50b-5d45-472e-abdf-ac9d51e427bc",
@@ -113,13 +115,22 @@ foreach ($Required in @(
         throw ("Local DPAPI vault safeguard missing: " + $Required)
     }
 }
-# A remote pilot must have exactly one target and require an explicit human
-# confirmation. Never silently default to real sends.
-if ($LocalCredentials -notmatch '(?s)"--devices",\s*"1",\s*"--ticks",\s*"3"') {
-    throw "Local pilot must remain limited to 1 device and 3 frames."
+# Both remote pilots are fixed: 1 or 10 controllers and 3 frames,
+# normal scenario, exact confirmation; never silently default to live sends.
+if ($LocalCredentials -notmatch '(?s)\$DeviceCount\s*=\s*if\s*\(\$Etapa\s+-eq\s+"EnviarDez"\)\s*\{\s*10\s*\}\s*else\s*\{\s*1\s*\}') {
+    throw "Remote pilot must only allow 1 or 10 staging controllers."
 }
-if ($LocalCredentials -notmatch '(?s)\$Confirm\s+-cne\s+"ENVIAR 1 LAB"') {
-    throw "Local pilot must require an exact user confirmation."
+if ($LocalCredentials -notmatch '(?s)"--devices",\s*\(\[string\]\$DeviceCount\),\s*"--ticks",\s*"3"') {
+    throw "Remote pilot must send exactly 3 frames per controller."
+}
+if ($LocalCredentials -notmatch '(?s)"--scenario",\s*"normal",\s*"--pace-ms",\s*"30000"') {
+    throw "Remote pilot must remain normal scenario at 30-second intervals."
+}
+if ($LocalCredentials -notmatch '(?s)\$ConfirmationText\s*=\s*if\s*\(\$DeviceCount\s+-eq\s+10\)\s*\{\s*"ENVIAR 10 LAB"\s*\}\s*else\s*\{\s*"ENVIAR 1 LAB"\s*\}') {
+    throw "Remote pilots must require distinct fixed confirmation phrases."
+}
+if ($LocalCredentials -notmatch '(?s)\$Confirm\s+-cne\s+\$ConfirmationText') {
+    throw "Remote pilot must require an exact user confirmation."
 }
 if ($LocalCredentials -match '(?i)wrangler\s+(deploy|d1\s+(delete|execute|migrations))') {
     throw "Local credential script must not deploy or alter a D1."
