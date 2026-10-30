@@ -4,7 +4,8 @@ $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Files = @(
     (Join-Path $PSScriptRoot "01-provisionar-staging.ps1"),
     (Join-Path $PSScriptRoot "02-testar-staging.ps1"),
-    (Join-Path $PSScriptRoot "03-configurar-access.ps1")
+    (Join-Path $PSScriptRoot "03-configurar-access.ps1"),
+    (Join-Path $PSScriptRoot "04-credencial-access-lab.ps1")
 )
 foreach ($File in $Files) {
     $Tokens = $null
@@ -88,5 +89,24 @@ foreach ($Required in @(
 }
 if ($Access -match '(?i)(^|\s)(bypass|everyone)\s*=\s*\$true') {
     throw "Access provisioning contains a potentially permissive bypass."
+}
+$LocalCredentials = Get-Content -LiteralPath $Files[3] -Raw
+foreach ($Required in @(
+    "58d6a273-b961-4936-b444-482700608202",
+    "26b9ecab-1aaa-4120-93a5-1c409555d28b",
+    "lab-access-client.dpapi.json",
+    "ConvertFrom-SecureString",
+    "ConvertTo-SecureString",
+    "Invoke-RestMethod",
+    "MaximumRedirection 0",
+    "LAB_STAGING_ROLLUP_ONLY",
+    "Read-Host"
+)) {
+    if (-not $LocalCredentials.Contains($Required)) {
+        throw ("Local DPAPI vault safeguard missing: " + $Required)
+    }
+}
+if ($LocalCredentials -match '(?i)wrangler\s+(deploy|d1\s+(delete|execute|migrations))') {
+    throw "Local credential script must not deploy or alter a D1."
 }
 Write-Host "PowerShell staging: verificacao estatica concluida." -ForegroundColor Green
