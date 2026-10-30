@@ -1,5 +1,7 @@
 # Maltworks Lab: local DPAPI vault for a DEDICATED simulator-only Access token.
-# Never creates, rotates or revokes tokens; never deploys or modifies D1.
+# Never creates, rotates or revokes tokens or deploys. Guardar/Testar are
+# credential-only/read-only; EnviarPiloto/EnviarDez explicitly send synthetic
+# telemetry to the isolated staging Worker, which may persist D1 records.
 # PowerShell 5.1+: save uses visible Read-Host because hidden input is blocked
 # in this console. No secrets on command line, in git, or in output.
 [CmdletBinding()]
