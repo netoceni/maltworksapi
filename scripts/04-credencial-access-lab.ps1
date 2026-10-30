@@ -4,7 +4,7 @@
 # in this console. No secrets on command line, in git, or in output.
 [CmdletBinding()]
 param(
-    [ValidateSet("Guardar", "Conferir", "Testar", "EnviarPiloto")]
+    [ValidateSet("Guardar", "Conferir", "Testar", "EnviarPiloto", "EnviarDez")]
     [string] $Etapa = "Conferir"
 )
 
@@ -126,7 +126,7 @@ try {
         Validar-Credencial $Vault.service_token_id $ClientId $ClientSecret
         Write-Host "Cofre DPAPI legivel e credencial do simulador estruturalmente valida." -ForegroundColor Green
 
-        if ($Etapa -eq "Testar" -or $Etapa -eq "EnviarPiloto") {
+        if ($Etapa -eq "Testar" -or $Etapa -eq "EnviarPiloto" -or $Etapa -eq "EnviarDez") {
             & node (Join-Path $Root "scripts\maltworks-lab-stage-preflight.mjs") (Join-Path $Root "wrangler.lab-staging.jsonc")
             if ($LASTEXITCODE -ne 0) { throw "Preflight staging falhou." }
             $Cfg = Get-Content -LiteralPath (Join-Path $Root "wrangler.lab-staging.jsonc") -Raw | ConvertFrom-Json
@@ -153,8 +153,8 @@ try {
             }
             Write-Host ("Acesso validado: Worker staging respondeu /health, versao " + $Response.version) -ForegroundColor Green
 
-            if ($Etapa -eq "EnviarPiloto") {
-                # Single-device canary. The only permitted payload count is 3.
+            if ($Etapa -eq "EnviarPiloto" -or $Etapa -eq "EnviarDez") {
+                # Two fixed, manually authorized pilots: 1x3 or 10x3 frames.
                 # Domain binding was checked in the dashboard before this run.
                 if ($Vault.service_token_id -cne "9b64b50b-5d45-472e-abdf-ac9d51e427bc" -or
                     $Response.version -cne "5.19.0") {
@@ -164,33 +164,48 @@ try {
                 if (-not (Test-Path -LiteralPath $DeviceVault)) {
                     throw "Cofre dos 10 dispositivos nao encontrado. Nada foi enviado."
                 }
-                $WantedId = "MW-C00000000000"
-                $SelectedToken = $null
+                $DeviceCount = if ($Etapa -eq "EnviarDez") { 10 } else { 1 }
+                $ExpectedFrames = $DeviceCount * 3
+                $ConfirmationText = if ($DeviceCount -eq 10) { "ENVIAR 10 LAB" } else { "ENVIAR 1 LAB" }
+                $SelectedTokens = [ordered]@{}
                 $TokenMapPlain = $null
                 try {
                     $Cipher = (Get-Content -LiteralPath $DeviceVault -Raw).Trim()
                     $TokenMapPlain = Desproteger-Valor $Cipher
                     $TokenMap = ConvertFrom-Json -InputObject $TokenMapPlain
-                    $Property = $TokenMap.PSObject.Properties[$WantedId]
-                    if ($null -eq $Property -or
-                        [string]$Property.Value -notmatch '^[a-fA-F0-9]{64}$') {
-                        throw "Token do primeiro controlador ausente ou invalido."
+                    $Seen = New-Object 'System.Collections.Generic.HashSet[string]'
+                    for ($Index = 0; $Index -lt $DeviceCount; $Index++) {
+                        $WantedId = [string]::Format("MW-C{0:D11}", $Index)
+                        $Property = $TokenMap.PSObject.Properties[$WantedId]
+                        if ($null -eq $Property -or
+                            [string]$Property.Value -notmatch '^[a-fA-F0-9]{64}$') {
+                            throw "Token invalido ou ausente para controlador simulado."
+                        }
+                        $SelectedToken = ([string]$Property.Value).ToLowerInvariant()
+                        if (-not $Seen.Add($SelectedToken)) {
+                            throw "Ha credenciais duplicadas nos controladores simulados."
+                        }
+                        $SelectedTokens[$WantedId] = $SelectedToken
+                        $SelectedToken = $null
                     }
-                    $SelectedToken = [string]$Property.Value
+                    if ($SelectedTokens.Count -ne $DeviceCount) {
+                        throw "Quantidade inesperada de controladores no cofre."
+                    }
                 } catch {
-                    throw "Falha ao ler o cofre DPAPI do primeiro controlador. Nada foi enviado."
+                    throw "Falha ao validar credenciais dos controladores no cofre DPAPI. Nada foi enviado."
                 } finally {
                     $Cipher = $null
                     $TokenMapPlain = $null
                     $TokenMap = $null
+                    $Seen = $null
                 }
 
                 Write-Host "Destino aprovado: https://api-staging.maltworks.com.br/v1/telemetry"
-                Write-Host "Controlador: MW-C00000000000 | cenario: normal | 3 ciclos | intervalo: 30 s."
-                Write-Host "Esta etapa ENVIA telemetria sintetica apenas ao staging."
-                $Confirm = Read-Host "Digite ENVIAR 1 LAB para autorizar as 3 requisicoes"
-                if ($Confirm -cne "ENVIAR 1 LAB") {
-                    $SelectedToken = $null
+                Write-Host ("Controladores: " + $DeviceCount + " | cenario: normal | 3 ciclos por controlador | intervalo: 30 s.")
+                Write-Host ("Esta etapa ENVIA " + $ExpectedFrames + " requisicoes de telemetria sintetica ao staging.")
+                $Confirm = Read-Host ("Digite " + $ConfirmationText + " para autorizar a transmissao")
+                if ($Confirm -cne $ConfirmationText) {
+                    $SelectedTokens = $null
                     throw "Piloto cancelado. Nenhuma telemetria enviada."
                 }
 
@@ -204,25 +219,24 @@ try {
                     $PreviousEnv[$EnvName] = [Environment]::GetEnvironmentVariable($EnvName, "Process")
                 }
                 try {
-                    $SingleTokenMap = [ordered]@{ $WantedId = $SelectedToken }
-                    $env:MALTWORKS_LAB_STAGING_TOKENS_JSON = ConvertTo-Json -InputObject $SingleTokenMap -Compress
+                    $env:MALTWORKS_LAB_STAGING_TOKENS_JSON = ConvertTo-Json -InputObject $SelectedTokens -Compress
                     $env:CF_ACCESS_CLIENT_ID = $ClientId
                     $env:CF_ACCESS_CLIENT_SECRET = $ClientSecret
                     $NodeArgs = @("--send",
                         "--endpoint", "https://api-staging.maltworks.com.br/v1/telemetry",
-                        "--devices", "1", "--ticks", "3",
+                        "--devices", ([string]$DeviceCount), "--ticks", "3",
                         "--scenario", "normal", "--pace-ms", "30000")
                     & node (Join-Path $Root "scripts\maltworks-lab-staging.mjs") @NodeArgs
                     if ($LASTEXITCODE -ne 0) {
-                        throw "Piloto interrompido. Confira o resultado antes de reenviar."
+                        throw "Piloto interrompido. Podem existir entregas parciais: nao reenvie sem conferir."
                     }
-                    Write-Host "Piloto concluido. Confira delivered=3 e omitted=0." -ForegroundColor Green
+                    Write-Host ("Piloto concluido. Confira delivered=" + $ExpectedFrames + " e omitted=0.") -ForegroundColor Green
                 } finally {
                     foreach ($EnvName in $EnvNames) {
                         [Environment]::SetEnvironmentVariable($EnvName, $PreviousEnv[$EnvName], "Process")
                     }
                     $SelectedToken = $null
-                    $SingleTokenMap = $null
+                    $SelectedTokens = $null
                 }
             }
         }
