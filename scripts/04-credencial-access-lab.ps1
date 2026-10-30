@@ -4,7 +4,7 @@
 # in this console. No secrets on command line, in git, or in output.
 [CmdletBinding()]
 param(
-    [ValidateSet("Guardar", "Conferir", "Testar")]
+    [ValidateSet("Guardar", "Conferir", "Testar", "EnviarPiloto")]
     [string] $Etapa = "Conferir"
 )
 
@@ -126,7 +126,7 @@ try {
         Validar-Credencial $Vault.service_token_id $ClientId $ClientSecret
         Write-Host "Cofre DPAPI legivel e credencial do simulador estruturalmente valida." -ForegroundColor Green
 
-        if ($Etapa -eq "Testar") {
+        if ($Etapa -eq "Testar" -or $Etapa -eq "EnviarPiloto") {
             & node (Join-Path $Root "scripts\maltworks-lab-stage-preflight.mjs") (Join-Path $Root "wrangler.lab-staging.jsonc")
             if ($LASTEXITCODE -ne 0) { throw "Preflight staging falhou." }
             $Cfg = Get-Content -LiteralPath (Join-Path $Root "wrangler.lab-staging.jsonc") -Raw | ConvertFrom-Json
@@ -152,6 +152,79 @@ try {
                 throw "Resposta /health inesperada. Nenhuma telemetria enviada."
             }
             Write-Host ("Acesso validado: Worker staging respondeu /health, versao " + $Response.version) -ForegroundColor Green
+
+            if ($Etapa -eq "EnviarPiloto") {
+                # Single-device canary. The only permitted payload count is 3.
+                # Domain binding was checked in the dashboard before this run.
+                if ($Vault.service_token_id -cne "9b64b50b-5d45-472e-abdf-ac9d51e427bc" -or
+                    $Response.version -cne "5.19.0") {
+                    throw "Credencial ou versao diferente do staging validado. Nada foi enviado."
+                }
+                $DeviceVault = Join-Path $VaultDir "lab-staging-ten-tokens.dpapi"
+                if (-not (Test-Path -LiteralPath $DeviceVault)) {
+                    throw "Cofre dos 10 dispositivos nao encontrado. Nada foi enviado."
+                }
+                $WantedId = "MW-C00000000000"
+                $SelectedToken = $null
+                $TokenMapPlain = $null
+                try {
+                    $Cipher = (Get-Content -LiteralPath $DeviceVault -Raw).Trim()
+                    $TokenMapPlain = Desproteger-Valor $Cipher
+                    $TokenMap = ConvertFrom-Json -InputObject $TokenMapPlain
+                    $Property = $TokenMap.PSObject.Properties[$WantedId]
+                    if ($null -eq $Property -or
+                        [string]$Property.Value -notmatch '^[a-fA-F0-9]{64}$') {
+                        throw "Token do primeiro controlador ausente ou invalido."
+                    }
+                    $SelectedToken = [string]$Property.Value
+                } catch {
+                    throw "Falha ao ler o cofre DPAPI do primeiro controlador. Nada foi enviado."
+                } finally {
+                    $Cipher = $null
+                    $TokenMapPlain = $null
+                    $TokenMap = $null
+                }
+
+                Write-Host "Destino aprovado: https://api-staging.maltworks.com.br/v1/telemetry"
+                Write-Host "Controlador: MW-C00000000000 | cenario: normal | 3 ciclos | intervalo: 30 s."
+                Write-Host "Esta etapa ENVIA telemetria sintetica apenas ao staging."
+                $Confirm = Read-Host "Digite ENVIAR 1 LAB para autorizar as 3 requisicoes"
+                if ($Confirm -cne "ENVIAR 1 LAB") {
+                    $SelectedToken = $null
+                    throw "Piloto cancelado. Nenhuma telemetria enviada."
+                }
+
+                $EnvNames = @(
+                    "MALTWORKS_LAB_STAGING_TOKENS_JSON",
+                    "CF_ACCESS_CLIENT_ID",
+                    "CF_ACCESS_CLIENT_SECRET"
+                )
+                $PreviousEnv = @{}
+                foreach ($EnvName in $EnvNames) {
+                    $PreviousEnv[$EnvName] = [Environment]::GetEnvironmentVariable($EnvName, "Process")
+                }
+                try {
+                    $SingleTokenMap = [ordered]@{ $WantedId = $SelectedToken }
+                    $env:MALTWORKS_LAB_STAGING_TOKENS_JSON = ConvertTo-Json -InputObject $SingleTokenMap -Compress
+                    $env:CF_ACCESS_CLIENT_ID = $ClientId
+                    $env:CF_ACCESS_CLIENT_SECRET = $ClientSecret
+                    $NodeArgs = @("--send",
+                        "--endpoint", "https://api-staging.maltworks.com.br/v1/telemetry",
+                        "--devices", "1", "--ticks", "3",
+                        "--scenario", "normal", "--pace-ms", "30000")
+                    & node (Join-Path $Root "scripts\maltworks-lab-staging.mjs") @NodeArgs
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Piloto interrompido. Confira o resultado antes de reenviar."
+                    }
+                    Write-Host "Piloto concluido. Confira delivered=3 e omitted=0." -ForegroundColor Green
+                } finally {
+                    foreach ($EnvName in $EnvNames) {
+                        [Environment]::SetEnvironmentVariable($EnvName, $PreviousEnv[$EnvName], "Process")
+                    }
+                    $SelectedToken = $null
+                    $SingleTokenMap = $null
+                }
+            }
         }
     } finally {
         $ClientSecret = $null
