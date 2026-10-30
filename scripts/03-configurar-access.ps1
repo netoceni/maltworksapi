@@ -1,9 +1,9 @@
 # Maltworks Lab: cria aplicacao Access SEM criar DNS ou rota publica.
 # PowerShell 5.1+ / Windows. Autenticacao API solicitada via SecureString.
-# Requer token Cloudflare com Access: Apps and Policies Edit e Service Tokens Edit.
+# Checar e Inspecionar exigem apenas permissoes de leitura; Criar exige escrita.
 [CmdletBinding()]
 param(
-    [ValidateSet("Checar","Criar","Auditar")]
+    [ValidateSet("Checar","Inspecionar","Criar","Auditar")]
     [string] $Etapa = "Checar",
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-fA-F0-9]{32}$')]
@@ -192,6 +192,70 @@ try {
             Write-Host ("Aplicacao Access existente: " + $Encontradas[0].id)
         }
         if ($null -ne $Vault) { Write-Host "Credencial de Lab ja armazenada em DPAPI." }
+    } elseif ($Etapa -eq "Inspecionar") {
+        # Independent read-only audit for an existing Access application.
+        # Do not require a local service-token vault and do not modify policies.
+        if ($Encontradas.Count -ne 1) {
+            throw "Aplicacao Access nao encontrada unicamente. Nenhuma alteracao realizada."
+        }
+        $Detalhe = (Requisicao-Access "GET" ("/apps/" + $Encontradas[0].id)).result
+        if ($Detalhe.id -ne $Encontradas[0].id -or
+            $Detalhe.type -ne "self_hosted" -or
+            $Detalhe.domain -ne $HostName) {
+            throw "Aplicacao Access nao corresponde ao hostname exato do staging."
+        }
+        if ($Detalhe.app_launcher_visible -eq $true) {
+            Write-Warning "A aplicacao esta visivel no App Launcher."
+        }
+        Write-Host ("Aplicacao confirmada: " + $Detalhe.id)
+        Write-Host ("Hostname confirmado: " + $Detalhe.domain)
+        $Politicas = @((Requisicao-Access "GET" ("/apps/" + $Detalhe.id + "/policies")).result)
+        $Servico = 0
+        $Email = 0
+        $Inseguras = 0
+        Write-Host ("Numero de politicas: " + $Politicas.Count)
+        foreach ($Politica in $Politicas) {
+            $Regras = @($Politica.include)
+            $ComTokenEspecifico = @($Regras | Where-Object {
+                $_.PSObject.Properties.Name -contains "service_token" -and
+                $null -ne $_.service_token -and
+                -not [string]::IsNullOrWhiteSpace($_.service_token.token_id)
+            }).Count -gt 0
+            $ComEmailEspecifico = @($Regras | Where-Object {
+                $_.PSObject.Properties.Name -contains "email" -and
+                $null -ne $_.email -and
+                -not [string]::IsNullOrWhiteSpace($_.email.email)
+            }).Count -gt 0
+            $AmplamentePermissiva = $Politica.decision -eq "bypass" -or
+                @($Regras | Where-Object {
+                    $_.PSObject.Properties.Name -contains "everyone" -or
+                    $_.PSObject.Properties.Name -contains "any_valid_service_token"
+                }).Count -gt 0
+            if ($Politica.decision -eq "non_identity" -and $ComTokenEspecifico) { $Servico++ }
+            if ($Politica.decision -eq "allow" -and $ComEmailEspecifico) { $Email++ }
+            if ($AmplamentePermissiva) { $Inseguras++ }
+            Write-Host ("Politica: " + $Politica.name + " | decisao=" + $Politica.decision +
+                " | token_especifico=" + $ComTokenEspecifico +
+                " | email_especifico=" + $ComEmailEspecifico +
+                " | permissiva=" + $AmplamentePermissiva)
+        }
+        Write-Host ("Resumo: service_auth=" + $Servico +
+            " | email_restrito=" + $Email + " | politicas_permissivas=" + $Inseguras)
+        if ($Inseguras -gt 0) {
+            throw "Politicas Access potencialmente permissivas: revisar no painel. Nenhuma alteracao realizada."
+        }
+        if ($Servico -eq 0) {
+            Write-Warning "Nenhuma politica de token de servico especifico encontrada. Envio remoto NAO autorizado."
+        }
+        if ($Email -eq 0) {
+            Write-Warning "Nenhuma politica de e-mail especifico encontrada; revisar acesso humano."
+        }
+        if ($null -eq $Vault) {
+            Write-Host "Credencial DPAPI do token de servico AUSENTE: nao e possivel autenticar o simulador ainda."
+        } else {
+            Write-Host "Credencial DPAPI existe. Identidade do token ainda exige auditoria estrita."
+        }
+        Write-Host "Inspecao somente leitura concluida. Nenhum envio remoto autorizado por esta verificacao."
     } elseif ($Etapa -eq "Criar") {
         if ($Encontradas.Count -gt 0) {
             throw "Access ja existe neste hostname/nome; nada sera sobrescrito. Use -Etapa Auditar."
