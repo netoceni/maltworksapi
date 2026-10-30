@@ -161,7 +161,11 @@ try {
             $Seguro = ConvertTo-SecureString -String $ClipboardText.Trim() -AsPlainText -Force
         } finally {
             $ClipboardText = $null
-            Set-Clipboard -Value ""
+            try {
+                Set-Clipboard -Value " " -ErrorAction Stop
+            } catch {
+                Write-Warning "Nao foi possivel limpar o clipboard; substitua o token manualmente."
+            }
         }
     } else {
         $Seguro = Read-Host "Cole seu API Token Cloudflare com permissoes Access" -AsSecureString
