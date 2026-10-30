@@ -9,7 +9,8 @@ param(
     [int] $Controladores = 1,
     [ValidateRange(1,120)]
     [int] $Ciclos = 12,
-    [string] $ZoneId = ""
+    [string] $ZoneId = "",
+    [switch] $TokenFromClipboard
 )
 
 Set-StrictMode -Version Latest
@@ -21,13 +22,27 @@ $BranchExpected = "test/staging-history-lab-free10-20261028"
 $Endpoint = "https://api-staging.maltworks.com.br/v1/telemetry"
 
 
-function Conferir-Rota-No-Painel([string] $Zone, [string] $Worker) {
+function Conferir-Rota-No-Painel([string] $Zone, [string] $Worker, [switch] $FromClipboard) {
     # Cloudflare dashboard-managed Worker Route: verify target via read-only API.
     if ($Zone -notmatch '^[a-fA-F0-9]{32}$') {
         throw "Informe -ZoneId com o Zone ID de maltworks.com.br (32 hex)."
     }
     Write-Host "Auditoria SOMENTE LEITURA: Workers Routes Read."
-    $Seguro = Read-Host "Token de API Cloudflare (nao sera exibido nem salvo)" -AsSecureString
+    if ($FromClipboard) {
+        Write-Host "Lendo token do clipboard, sem usar prompt oculto."
+        $ClipboardText = Get-Clipboard -Raw
+        if ([string]::IsNullOrWhiteSpace($ClipboardText)) {
+            throw "Clipboard vazio. Copie primeiro o token."
+        }
+        try {
+            $Seguro = ConvertTo-SecureString -String $ClipboardText.Trim() -AsPlainText -Force
+        } finally {
+            $ClipboardText = $null
+            Set-Clipboard -Value ""
+        }
+    } else {
+        $Seguro = Read-Host "Token de API Cloudflare (nao sera exibido nem salvo)" -AsSecureString
+    }
     $Ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Seguro)
     $ApiToken = $null
     try {
@@ -85,7 +100,7 @@ try {
     $Config = Get-Content -LiteralPath $ConfigFile -Raw | ConvertFrom-Json
     # Do not add routes to local Wrangler config only to satisfy this check.
     # The route is managed by Cloudflare dashboard; audit the live Worker target.
-    Conferir-Rota-No-Painel -Zone $ZoneId -Worker $Config.name
+    Conferir-Rota-No-Painel -Zone $ZoneId -Worker $Config.name -FromClipboard:$TokenFromClipboard
 
     foreach ($Name in @(
         "MALTWORKS_LAB_STAGING_TOKENS_JSON",
