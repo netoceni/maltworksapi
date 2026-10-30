@@ -47,6 +47,14 @@ export function validateLabStageConfig(config) {
       config.vars?.TELEMETRY_PERSIST_INTERVAL_SECONDS !== "180") {
     throw new Error("Lab staging must not use production origins or telemetry config");
   }
+  // Explicit zeros avoid defaulting to destructive 7/90/365-day retention.
+  // A secondary Worker-level guard skips retention while rollup-only is set.
+  if (config.vars?.LAB_STAGING_ROLLUP_ONLY !== "true" ||
+      config.vars?.TELEMETRY_RETENTION_DAYS !== "0" ||
+      config.vars?.HISTORY_5MIN_RETENTION_DAYS !== "0" ||
+      config.vars?.HISTORY_HOURLY_RETENTION_DAYS !== "0") {
+    throw new Error("Staging retention must be explicitly disabled (0/0/0, rollup-only=true)");
+  }
   for (const key of Object.keys(config.vars ?? {})) {
     if (/(secret|token|pepper|password|private_key)/i.test(key)) {
       throw new Error("Never put secrets into versioned Wrangler vars");
