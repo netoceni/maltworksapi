@@ -13,6 +13,10 @@ function stageConfig() {
       APP_ORIGIN: "https://app-staging.maltworks.com.br",
       ADMIN_ORIGIN: "https://admin-staging.maltworks.com.br",
       TELEMETRY_PERSIST_INTERVAL_SECONDS: "180",
+      TELEMETRY_RETENTION_DAYS: "0",
+      HISTORY_5MIN_RETENTION_DAYS: "0",
+      HISTORY_HOURLY_RETENTION_DAYS: "0",
+      LAB_STAGING_ROLLUP_ONLY: "true",
     },
     durable_objects: { bindings: [{ name: "REALTIME", class_name: "RealtimeHub" }] },
     migrations: [{ tag: "v1-realtime-lab-staging", new_sqlite_classes: ["RealtimeHub"] }],
@@ -58,6 +62,10 @@ test("staging config rejects production email, R2, cron and dangerous routes", (
   change((c) => { c.routes = [{ pattern: "api.maltworks.com.br/*", zone_name: "maltworks.com.br" }]; });
   change((c) => { c.vars.APP_ORIGIN = "https://app.maltworks.com.br"; });
   change((c) => { c.vars.PASSWORD_PEPPER = "should-not-be-in-versioned-files"; });
+  change((c) => { c.vars.TELEMETRY_RETENTION_DAYS = "7"; });
+  change((c) => { delete c.vars.HISTORY_5MIN_RETENTION_DAYS; });
+  change((c) => { c.vars.HISTORY_HOURLY_RETENTION_DAYS = "365"; });
+  change((c) => { c.vars.LAB_STAGING_ROLLUP_ONLY = "false"; });
   const allowed = stageConfig();
   allowed.routes = [{ pattern: "api-staging.maltworks.com.br/*", zone_name: "maltworks.com.br" }];
   assert.equal(validateLabStageConfig(allowed).routesConfigured, true);
