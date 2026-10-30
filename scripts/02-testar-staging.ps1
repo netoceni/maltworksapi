@@ -38,7 +38,11 @@ function Conferir-Rota-No-Painel([string] $Zone, [string] $Worker, [switch] $Fro
             $Seguro = ConvertTo-SecureString -String $ClipboardText.Trim() -AsPlainText -Force
         } finally {
             $ClipboardText = $null
-            Set-Clipboard -Value ""
+            try {
+                Set-Clipboard -Value " " -ErrorAction Stop
+            } catch {
+                Write-Warning "Nao foi possivel limpar o clipboard; substitua o token manualmente."
+            }
         }
     } else {
         $Seguro = Read-Host "Token de API Cloudflare (nao sera exibido nem salvo)" -AsSecureString
