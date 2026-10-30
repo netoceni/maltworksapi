@@ -21,8 +21,14 @@ if ($LASTEXITCODE -ne 0) { throw "Git failed" }
 $name = "maltworks-retention-disposable-20261030"
 
 # Must be a brand-new database. Do not substitute staging/production names.
+# Wrangler may offer to add the new D1 to the default wrangler.jsonc.
+# ANSWER NO: never let a disposable D1 alter the production Worker config.
 npx.cmd wrangler d1 create $name --location enam
 if ($LASTEXITCODE -ne 0) { throw "D1 create failed; stop here" }
+
+# If you previously answered yes and wrangler.jsonc changed, back up
+# that tracked config and restore only this file from Git before continuing.
+# Do not run deploy with the default wrangler.jsonc.
 
 $info = npx.cmd wrangler d1 info $name --json | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $info.name -ne $name -or
