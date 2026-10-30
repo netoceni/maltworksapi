@@ -93,6 +93,10 @@ export default {
   scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
     ctx.waitUntil((async () => {
       // Archiving must precede pruning, never the other way around.
+      // Rollup-only staging must never run automatic raw or archive deletion.
+      // This guard is opt-in; production behavior is unchanged when the flag is absent.
+      const rollupOnly = (env as Env & { LAB_STAGING_ROLLUP_ONLY?: string })
+        .LAB_STAGING_ROLLUP_ONLY === "true";
       if (shouldRollupHistory(controller.scheduledTime)) {
         try {
           await runIntelligentHistoryRollup(env, controller.scheduledTime);
@@ -102,6 +106,9 @@ export default {
           });
         }
       }
+      // Rollup-only staging deliberately skips retention, daily health, offline
+      // scans and notification publishing; other environments stay unchanged.
+      if (rollupOnly) return;
       if (shouldPruneTelemetry(controller.scheduledTime)) {
         try {
           await runTelemetryRetention(env, controller.scheduledTime);

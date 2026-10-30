@@ -1,0 +1,22 @@
+name: Validate staging PowerShell scripts
+
+on:
+  pull_request:
+    paths:
+      - "scripts/*.ps1"
+      - ".github/workflows/staging-ps-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: PowerShell syntax and staging safeguards
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Parse PowerShell and check staging guards
+        shell: pwsh
+        run: ./scripts/test-staging-ps-syntax.ps1

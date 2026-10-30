@@ -1,0 +1,48 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maltworks-api-lab-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "vars": {
+    "APP_ORIGIN": "https://app-staging.maltworks.com.br",
+    "ADMIN_ORIGIN": "https://admin-staging.maltworks.com.br",
+    "SESSION_TTL_DAYS": "1",
+    "TELEMETRY_PERSIST_INTERVAL_SECONDS": "180",
+    "TELEMETRY_RETENTION_DAYS": "0",
+    "HISTORY_5MIN_RETENTION_DAYS": "0",
+    "HISTORY_HOURLY_RETENTION_DAYS": "0",
+    "LAB_STAGING_ROLLUP_ONLY": "true"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-realtime-lab-staging",
+      "new_sqlite_classes": [
+        "RealtimeHub"
+      ]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "maltworks-lab-staging",
+      "database_id": "REPLACE_WITH_NEW_STAGING_D1_UUID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "preview_urls": false
+}
