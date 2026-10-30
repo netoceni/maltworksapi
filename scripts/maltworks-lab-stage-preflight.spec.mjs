@@ -35,6 +35,24 @@ test("staging config accepts only dedicated resources without cron", () => {
   assert.equal(valid.cronDisabled, true);
 });
 
+test("staging permits only the approved five-minute rollup cron", () => {
+  const cfg = stageConfig();
+  cfg.triggers = { crons: ["*/5 * * * *"] };
+  const valid = validateLabStageConfig(cfg);
+  assert.equal(valid.cronDisabled, false);
+  assert.equal(valid.cronSchedule, "*/5 * * * *");
+
+  for (const crons of [
+    ["* * * * *"],
+    ["*/10 * * * *"],
+    ["*/5 * * * *", "*/5 * * * *"],
+    ["*/5 * * * *", "* * * * *"],
+  ]) {
+    assert.throws(() => validateLabStageConfig({ ...cfg, triggers: { crons } }));
+  }
+  assert.throws(() => validateLabStageConfig({ ...cfg, triggers: { crons: "*/5 * * * *" } }));
+});
+
 test("staging config rejects production Worker, public workers.dev and database", () => {
   const change = (modify) => {
     const cfg = stageConfig();
