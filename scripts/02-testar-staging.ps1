@@ -29,7 +29,8 @@ function Conferir-Rota-No-Painel([string] $Zone, [string] $Worker, [switch] $Fro
     }
     Write-Host "Auditoria SOMENTE LEITURA: Workers Routes Read."
     if ($FromClipboard) {
-        Write-Host "Lendo token do clipboard, sem usar prompt oculto."
+        Write-Host "Copie o token Cloudflare no navegador. Nao cole no PowerShell."
+        [void](Read-Host "Pressione Enter depois de copiar o token")
         $ClipboardText = Get-Clipboard -Raw
         if ([string]::IsNullOrWhiteSpace($ClipboardText)) {
             throw "Clipboard vazio. Copie primeiro o token."
