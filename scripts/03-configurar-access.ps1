@@ -8,7 +8,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[a-fA-F0-9]{32}$')]
     [string] $AccountId,
-    [string] $AdminEmail = ""
+    [string] $AdminEmail = "",
+    [switch] $TokenFromClipboard
 )
 
 Set-StrictMode -Version Latest
@@ -150,7 +151,21 @@ try {
 
     Write-Host ("Etapa: " + $Etapa + " / Host: " + $HostName + " / Conta: " + $AccountId)
     Write-Host "O token da API sera lido sem eco e NAO sera salvo."
-    $Seguro = Read-Host "Cole seu API Token Cloudflare com permissoes Access" -AsSecureString
+    if ($TokenFromClipboard) {
+        Write-Host "Lendo token do clipboard, sem usar prompt oculto."
+        $ClipboardText = Get-Clipboard -Raw
+        if ([string]::IsNullOrWhiteSpace($ClipboardText)) {
+            throw "Clipboard vazio. Copie primeiro o token."
+        }
+        try {
+            $Seguro = ConvertTo-SecureString -String $ClipboardText.Trim() -AsPlainText -Force
+        } finally {
+            $ClipboardText = $null
+            Set-Clipboard -Value ""
+        }
+    } else {
+        $Seguro = Read-Host "Cole seu API Token Cloudflare com permissoes Access" -AsSecureString
+    }
     $Ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Seguro)
     try {
         $script:ApiToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Ptr)
