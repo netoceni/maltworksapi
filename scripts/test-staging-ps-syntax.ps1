@@ -106,7 +106,7 @@ foreach ($Required in @(
     "ENVIAR 1 LAB",
     "ENVIAR 10 LAB",
     "lab-staging-ten-tokens.dpapi",
-    "MW-C00000000000",
+    "MW-C{0:D11}",
     "9b64b50b-5d45-472e-abdf-ac9d51e427bc",
     "PreviousEnv",
     "maltworks-lab-staging.mjs"
@@ -114,6 +114,21 @@ foreach ($Required in @(
     if (-not $LocalCredentials.Contains($Required)) {
         throw ("Local DPAPI vault safeguard missing: " + $Required)
     }
+}
+# Device IDs are generated dynamically. Verify the exact generator and all
+# ten IDs, not a literal that no longer exists in the sender source.
+if ($LocalCredentials -notmatch '\[string\]::Format\("MW-C\{0:D11\}",\s*\$Index\)') {
+    throw "Lab staging controller ID format is not the expected MW-C prefix plus 11 digits."
+}
+if ($LocalCredentials -notmatch '(?s)for\s*\(\$Index\s*=\s*0;\s*\$Index\s+-lt\s+\$DeviceCount;\s*\$Index\+\+\)') {
+    throw "Lab staging token loader must enumerate every requested controller."
+}
+$Ids = @(0..9 | ForEach-Object { [string]::Format("MW-C{0:D11}", $_) })
+if ($Ids.Count -ne 10 -or
+    $Ids[0] -cne "MW-C00000000000" -or
+    $Ids[9] -cne "MW-C00000000009" -or
+    @($Ids | Select-Object -Unique).Count -ne 10) {
+    throw "Lab staging controller ID generator failed the 10-device check."
 }
 # Both remote pilots are fixed: 1 or 10 controllers and 3 frames,
 # normal scenario, exact confirmation; never silently default to live sends.
