@@ -152,7 +152,8 @@ try {
     Write-Host ("Etapa: " + $Etapa + " / Host: " + $HostName + " / Conta: " + $AccountId)
     Write-Host "O token da API sera lido sem eco e NAO sera salvo."
     if ($TokenFromClipboard) {
-        Write-Host "Lendo token do clipboard, sem usar prompt oculto."
+        Write-Host "Copie o token Cloudflare no navegador. Nao cole no PowerShell."
+        [void](Read-Host "Pressione Enter depois de copiar o token")
         $ClipboardText = Get-Clipboard -Raw
         if ([string]::IsNullOrWhiteSpace($ClipboardText)) {
             throw "Clipboard vazio. Copie primeiro o token."
