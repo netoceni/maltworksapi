@@ -52,6 +52,21 @@ foreach ($Required in @(
         throw ("Bootstrap secret preservation safeguard is missing: " + $Required)
     }
 }
+# Sending telemetry must first verify the actual dashboard Worker Route,
+# never just trust a hostname or a local Wrangler route declaration.
+$StageSender = Get-Content -LiteralPath $Files[1] -Raw
+foreach ($Required in @(
+    "Conferir-Rota-No-Painel",
+    "Workers Routes Read",
+    "api.cloudflare.com/client/v4/zones/",
+    "api-staging.maltworks.com.br/*",
+    "Read-Host",
+    "-AsSecureString"
+)) {
+    if (-not $StageSender.Contains($Required)) {
+        throw ("Staging route validation safeguard missing: " + $Required)
+    }
+}
 $Access = Get-Content -LiteralPath $Files[2] -Raw
 foreach ($Required in @(
     "api-staging.maltworks.com.br",
