@@ -67,8 +67,11 @@ $path = "scripts/retention-disposable"
 npx.cmd wrangler d1 execute $name --remote --config $configPath --file "$path/01-seed.sql" --yes
 if ($LASTEXITCODE -ne 0) { throw "Seed failed" }
 
-$status = (Get-Content "$path/04-status.sql" -Raw) -replace '\s+', ' '
-npx.cmd wrangler d1 execute $name --remote --config $configPath --command $status
+# Ignore SQL comments before flattening for Wrangler --command.
+$status = ((Get-Content "$path/04-status.sql" -Raw) -replace '(?m)^\s*--[^\r\n]*', '') -replace '\s+', ' '
+if (-not $status.TrimStart().StartsWith("SELECT ")) { throw "Invalid read-only status query" }
+npx.cmd wrangler d1 execute $name --remote --config $configPath --command "$status"
+if ($LASTEXITCODE -ne 0) { throw "Status query failed" }
 ```
 
 Expected: raw 6, expired 3, preserved recent 3, both archived sums 0, checkpoints
@@ -79,7 +82,7 @@ Expected: raw 6, expired 3, preserved recent 3, both archived sums 0, checkpoint
 ```powershell
 npx.cmd wrangler d1 execute $name --remote --config $configPath --file "$path/03-prune.sql" --yes
 if ($LASTEXITCODE -ne 0) { throw "Guard probe failed" }
-npx.cmd wrangler d1 execute $name --remote --config $configPath --command $status
+npx.cmd wrangler d1 execute $name --remote --config $configPath --command "$status"
 ```
 
 All eight status values must remain unchanged, especially raw 6 and expired 3.
@@ -89,14 +92,14 @@ All eight status values must remain unchanged, especially raw 6 and expired 3.
 ```powershell
 npx.cmd wrangler d1 execute $name --remote --config $configPath --file "$path/02-rollup.sql" --yes
 if ($LASTEXITCODE -ne 0) { throw "Rollup SQL failed" }
-npx.cmd wrangler d1 execute $name --remote --config $configPath --command $status
+npx.cmd wrangler d1 execute $name --remote --config $configPath --command "$status"
 
 # Before pruning: raw 6, expired 3, recent 3; archives 5 and 5,
 # checkpoints 2, latest 6, alarm 1.
 # Only proceed if that is exactly what was observed.
 npx.cmd wrangler d1 execute $name --remote --config $configPath --file "$path/03-prune.sql" --yes
 if ($LASTEXITCODE -ne 0) { throw "Prune failed" }
-npx.cmd wrangler d1 execute $name --remote --config $configPath --command $status
+npx.cmd wrangler d1 execute $name --remote --config $configPath --command "$status"
 
 # After pruning: raw 3, expired 0, recent 3, archives 5 and 5,
 # checkpoints 2, latest 6, alarm 1.
