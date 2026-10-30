@@ -64,9 +64,10 @@ try {
         Write-Host "Guarde apenas um NOVO Service Token, exclusivo do simulador." -ForegroundColor Yellow
         Write-Host "ATENCAO: Read-Host comum mostra os caracteres colados. Evite gravar a tela."
         Write-Host "As credenciais nao entram no historico de comandos nem em arquivos de texto."
-        $TokenId = Read-Host "UUID do novo Service Token (visivel, nao e segredo)"
-        $ClientId = Read-Host "Client ID do novo Service Token (visivel)"
-        $ClientSecret = Read-Host "Client Secret do novo Service Token (visivel)"
+        $ClientId = Read-Host "Client ID do NOVO Service Token (visivel)"
+        $ClientSecret = Read-Host "Client Secret do NOVO Service Token (visivel)"
+        Write-Host "Agora voce pode sair da tela que mostra o segredo e abrir os detalhes do token."
+        $TokenId = Read-Host "UUID do NOVO Service Token, obtido da URL dos detalhes (visivel)"
         $AdminEmail = Read-Host "E-mail autorizado no Access (visivel)"
         try {
             $TokenId = $TokenId.Trim()
