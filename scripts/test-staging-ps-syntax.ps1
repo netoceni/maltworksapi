@@ -100,11 +100,26 @@ foreach ($Required in @(
     "Invoke-RestMethod",
     "MaximumRedirection 0",
     "LAB_STAGING_ROLLUP_ONLY",
-    "Read-Host"
+    "Read-Host",
+    "EnviarPiloto",
+    "ENVIAR 1 LAB",
+    "lab-staging-ten-tokens.dpapi",
+    "MW-C00000000000",
+    "9b64b50b-5d45-472e-abdf-ac9d51e427bc",
+    "PreviousEnv",
+    "maltworks-lab-staging.mjs"
 )) {
     if (-not $LocalCredentials.Contains($Required)) {
         throw ("Local DPAPI vault safeguard missing: " + $Required)
     }
+}
+# A remote pilot must have exactly one target and require an explicit human
+# confirmation. Never silently default to real sends.
+if ($LocalCredentials -notmatch '(?s)"--devices",\s*"1",\s*"--ticks",\s*"3"') {
+    throw "Local pilot must remain limited to 1 device and 3 frames."
+}
+if ($LocalCredentials -notmatch '(?s)\$Confirm\s+-cne\s+"ENVIAR 1 LAB"') {
+    throw "Local pilot must require an exact user confirmation."
 }
 if ($LocalCredentials -match '(?i)wrangler\s+(deploy|d1\s+(delete|execute|migrations))') {
     throw "Local credential script must not deploy or alter a D1."
