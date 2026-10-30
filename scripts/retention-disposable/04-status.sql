@@ -1,4 +1,3 @@
--- Read-only checks. Use with Wrangler --command (not --file) to display results.
 SELECT
   (SELECT COUNT(*) FROM telemetry WHERE device_id='MW-RET-DISPOSABLE-ONLY') AS raw_remaining,
   (SELECT COUNT(*) FROM telemetry WHERE device_id='MW-RET-DISPOSABLE-ONLY'
