@@ -106,7 +106,10 @@ export default {
           });
         }
       }
-      if (!rollupOnly && shouldPruneTelemetry(controller.scheduledTime)) {
+      // Rollup-only staging deliberately skips retention, daily health, offline
+      // scans and notification publishing; other environments stay unchanged.
+      if (rollupOnly) return;
+      if (shouldPruneTelemetry(controller.scheduledTime)) {
         try {
           await runTelemetryRetention(env, controller.scheduledTime);
         } catch (error) {
@@ -115,7 +118,7 @@ export default {
           });
         }
       }
-      if (!rollupOnly && shouldExpireHistory(controller.scheduledTime)) {
+      if (shouldExpireHistory(controller.scheduledTime)) {
         try {
           await runIntelligentHistoryExpiry(env, controller.scheduledTime);
         } catch (error) {
