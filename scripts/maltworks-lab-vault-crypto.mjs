@@ -23,8 +23,8 @@ function readBase64(value, length) {
 }
 
 export function seal(passphrase, payload) {
-  if (typeof passphrase !== 'string' || !/^[\x21-\x7E]{20,128}$/.test(passphrase)) {
-    throw new Error('Passphrase must be 20-128 printable ASCII characters without spaces');
+  if (typeof passphrase !== 'string' || !/^[\x21-\x7E]{8,128}$/.test(passphrase)) {
+    throw new Error('Passphrase must be 8-128 printable ASCII characters without spaces');
   }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('Invalid lab credentials');
@@ -57,7 +57,7 @@ export function seal(passphrase, payload) {
 }
 
 export function unseal(passphrase, envelope) {
-  if (typeof passphrase !== 'string' || !/^[\x21-\x7E]{20,128}$/.test(passphrase)) {
+  if (typeof passphrase !== 'string' || !/^[\x21-\x7E]{8,128}$/.test(passphrase)) {
     throw new Error('Invalid passphrase or encrypted envelope');
   }
   if (!envelope || envelope.format !== LABEL || envelope.cipher !== 'aes-256-gcm' ||
