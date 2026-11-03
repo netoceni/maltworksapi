@@ -15,6 +15,19 @@ export const LAB_MAX_STAGING_TICKS = 120;
 export const LAB_SOAK_OUTAGE_START_TICK = 30;
 export const LAB_SOAK_OUTAGE_END_TICK = 34;
 const DEVICE_TOKEN_RE = /^[a-f0-9]{64}$/i;
+const SAFE_NETWORK_CODES = new Set([
+  "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND",
+  "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_SOCKET",
+]);
+
+function classifyFetchFailure(error, signal) {
+  // Never echo raw fetch errors, URLs, response bodies or credentials.
+  if (signal.aborted || error?.name === "TimeoutError") return "timeout";
+  if (error?.name === "AbortError") return "aborted";
+  const code = error?.cause?.code;
+  if (typeof code === "string" && SAFE_NETWORK_CODES.has(code)) return "network-" + code;
+  return "network-or-redirect";
+}
 
 function isLoopback(hostname) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
@@ -91,7 +104,10 @@ export async function runLabStaging({
   startAt = Math.floor(Date.now() / 1000),
   sessionId = randomInt(0, 2048),
   accessClientId, accessClientSecret, soakOutage = false,
-}, { fetchImpl = fetch, sleep = delay, nowMs = () => performance.now(), onTick = null } = {}) {
+}, {
+  fetchImpl = fetch, sleep = delay, nowMs = () => performance.now(),
+  onTick = null, onTickStart = null,
+} = {}) {
   const url = requireLabEndpoint(endpoint);
   if (!Number.isInteger(devices) || devices < 1 || devices > LAB_MAX_STAGING_DEVICES) {
     throw new Error("Remote staging supports 1-10 devices");
@@ -158,6 +174,7 @@ export async function runLabStaging({
       if (Math.abs(gapMs - paceMs) > toleranceMs) timingValid = false;
     }
     previousTickStartMs = tickStartedMs;
+    if (onTickStart) onTickStart({ tick: tick + 1, totalTicks: ticks });
 
     // Ten independent devices are sent concurrently, not serially. Wait
     // until all in-flight requests settle before starting the next tick.
@@ -191,6 +208,7 @@ export async function runLabStaging({
       requestedDevices.push(deviceId);
       requests.push((async () => {
         let response;
+        const timeoutSignal = AbortSignal.timeout(10_000);
         try {
           response = await fetchImpl(url.href, {
             method: "POST",
@@ -198,10 +216,13 @@ export async function runLabStaging({
             redirect: "error",
             cache: "no-store",
             body: JSON.stringify(frame),
-            signal: AbortSignal.timeout(10_000),
+            signal: timeoutSignal,
           });
-        } catch {
-          throw new Error("Lab staging request failed or was redirected; stopping safely");
+        } catch (error) {
+          throw new Error(
+            "Lab staging request failed (" + classifyFetchFailure(error, timeoutSignal) +
+            "); stopping safely",
+          );
         }
         if (response.status !== 200) {
           if (response.status === 202) {

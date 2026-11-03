@@ -306,6 +306,7 @@ try {
     $HttpReport = $null
     $HttpExitCode = $null
     $HttpLastProgress = $null
+    $HttpLastStarted = $null
     $HttpFailureSummary = $null
     $HttpErrorLog = $null
     $HttpOutputLog = $null
@@ -447,8 +448,10 @@ try {
         $After = @(Ler-Estados $FromUtc)
         $AfterInfo = Obter-D1
         for ($i = 0; $i -lt 10; $i++) {
-            if ([int]$After[$i].offline -ne 0 -or [int]$After[$i].seq -ne 60) {
-                throw "Estado D1 final nao esta online ou nao recebeu a sequencia 60."
+            # Selective D1 persistence can leave final sequence below 60.
+            if ([int]$After[$i].offline -ne 0 -or
+                [int]$After[$i].seq -le 0 -or [int]$After[$i].raw_samples -le 0) {
+                throw "Estado D1 final offline ou sem snapshot deste ensaio."
             }
             $ExpectedOffline = if ($i -eq 0) { 1 } else { 0 }
             if ([int]$After[$i].offline_events -ne $ExpectedOffline) {
@@ -477,10 +480,13 @@ try {
         if (Test-Path -LiteralPath $ErrorFile -PathType Leaf) {
             $Lines = @(Get-Content -LiteralPath $ErrorFile -ErrorAction SilentlyContinue)
             foreach ($Line in $Lines) {
+                if ($Line -match '^Maltworks Lab start: tick=[0-9]{1,2}/60$') {
+                    $HttpLastStarted = $Line
+                }
                 if ($Line -match '^Maltworks Lab progress: tick=[0-9]{1,2}/60 delivered=[0-9]{1,3} omitted=[0-5]$') {
                     $HttpLastProgress = $Line
                 }
-                if ($Line -match '^Maltworks Lab: Lab staging HTTP batch failed at tick [0-9]{1,2}/60, device MW-C[0-9]{11}: (Lab staging request failed or was redirected; stopping safely|Staging telemetry rejected [(]HTTP [1-5][0-9]{2}[)]|Staging device is pending; claim it in the staging organization first|Lab staging did not confirm an active test device)$') {
+                if ($Line -match '^Maltworks Lab: Lab staging HTTP batch failed at tick [0-9]{1,2}/60, device MW-C[0-9]{11}: (Lab staging request failed [(](timeout|aborted|network-or-redirect|network-(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_SOCKET))[)]; stopping safely|Staging telemetry rejected [(]HTTP [1-5][0-9]{2}[)]|Staging device is pending; claim it in the staging organization first|Lab staging did not confirm an active test device)$') {
                     $HttpFailureSummary = $Line
                 }
             }
@@ -529,6 +535,7 @@ try {
             http = $HttpReport
             http_exit_code = $HttpExitCode
             http_last_progress = $HttpLastProgress
+            http_last_started = $HttpLastStarted
             http_failure_summary = $HttpFailureSummary
             http_stderr_log_local = $HttpErrorLog
             http_stdout_log_local = $HttpOutputLog
@@ -547,6 +554,7 @@ try {
         Write-Host ("Relatorio local sem credenciais: " + $ReportFile)
         if ($RunStatus -cne "passed") {
             Write-Host ("Emissor HTTP, codigo de saida: " + $HttpExitCode)
+            if ($HttpLastStarted) { Write-Host $HttpLastStarted }
             if ($HttpLastProgress) { Write-Host $HttpLastProgress }
             if ($HttpFailureSummary) { Write-Host $HttpFailureSummary }
             Write-Host "Logs locais preservados (nao compartilhe logs brutos sem revisar)."

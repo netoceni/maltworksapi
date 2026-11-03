@@ -200,7 +200,7 @@ test("pending device, redirects and rejected requests stop without leaking secre
     fetchImpl: async () => { throw new Error("Bearer " + TOKEN + " is secret"); },
   }), (error) => {
     assert.ok(!error.message.includes(TOKEN));
-    return /failed or was redirected/.test(error.message);
+    return /Lab staging request failed \(network-or-redirect\)/.test(error.message);
   });
 });
 
@@ -287,4 +287,59 @@ test("HTTP simulator exposes safe tick and device on a partial batch failure", a
   assert.deepEqual(observed, [{
     tick: 1, totalTicks: 3, delivered: 2, omitted: 0,
   }]);
+});
+
+test("final HTTP tick timeout preserves safe device/tick diagnostics", async () => {
+  let clockMs = 0;
+  const started = [];
+  const completed = [];
+  await assert.rejects(
+    runLabStaging({
+      endpoint: remote, tokens: tokens(2), devices: 2, ticks: 3,
+      paceMs: 30_000, startAt: 1_800_000_000,
+      accessClientId: "test-access-id", accessClientSecret: "test-access-secret",
+    }, {
+      fetchImpl: async (_url, options) => {
+        const packet = JSON.parse(options.body);
+        if (packet.deviceId === labDeviceId(0) && packet.sequence === 3) {
+          const timeout = new Error("SECRET " + TOKEN);
+          timeout.name = "TimeoutError";
+          throw timeout;
+        }
+        return accepted();
+      },
+      sleep: async (ms) => { clockMs += ms; },
+      nowMs: () => clockMs,
+      onTickStart: ({ tick }) => started.push(tick),
+      onTick: ({ tick }) => completed.push(tick),
+    }),
+    (error) => {
+      assert.match(error.message,
+        /tick 3\/3, device MW-C00000000000: Lab staging request failed \(timeout\)/);
+      assert.ok(!error.message.includes(TOKEN));
+      assert.ok(!error.message.includes("test-access-secret"));
+      return true;
+    },
+  );
+  assert.deepEqual(started, [1, 2, 3]);
+  assert.deepEqual(completed, [1, 2]);
+});
+
+test("network diagnostics use allowlisted error codes without leaking raw errors", async () => {
+  await assert.rejects(
+    runLabStaging({
+      endpoint: local, tokens: tokens(1), devices: 1, ticks: 1, paceMs: 0,
+    }, {
+      fetchImpl: async () => {
+        const error = new Error("Never log bearer " + TOKEN);
+        error.cause = { code: "ECONNRESET" };
+        throw error;
+      },
+    }),
+    (error) => {
+      assert.match(error.message, /Lab staging request failed \(network-ECONNRESET\)/);
+      assert.ok(!error.message.includes(TOKEN));
+      return true;
+    },
+  );
 });

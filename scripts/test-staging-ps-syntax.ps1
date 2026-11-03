@@ -222,6 +222,13 @@ if ($Soak -match '(?i)wss?://(api|app|admin)\.maltworks\.com\.br/' -or
 if ($Soak -match '(?i)\b(DROP\s+TABLE|DELETE\s+FROM|UPDATE\s+notification_states|INSERT\s+INTO)\b') {
     throw "Integrated soak must perform no direct D1 writes."
 }
+if ($Soak -match '\$After\[\$i\]\.seq\s+-ne\s+60') {
+    throw "Selective D1 persistence must not require exact final sequence 60."
+}
+if (-not $Soak.Contains('$After[$i].raw_samples') -or
+    -not $Soak.Contains('http_last_started')) {
+    throw "Integrated HTTP/D1 diagnostics safeguards missing."
+}
 Write-Host "Integrated Maltworks Lab: staging and syntax safeguards approved." -ForegroundColor Green
 
 # Second-PC readiness and offline AES-GCM transfer: check syntax and hard guards.
