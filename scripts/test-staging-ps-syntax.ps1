@@ -234,16 +234,16 @@ foreach ($Required in @(
 )) {
     if (-not $Transfer.Contains($Required)) { throw ("Guard missing in vault transfer: " + $Required) }
 }
-$Home = Get-Content -LiteralPath $Files[7] -Raw
+$HomeSource = Get-Content -LiteralPath $Files[7] -Raw
 foreach ($Required in @(
     "PrepararLocal", "Checar", "maltworks-lab-stage-preflight.mjs",
     "wrangler.lab-staging.example.jsonc", "REPLACE_WITH_NEW_STAGING_D1_UUID",
     "26b9ecab-1aaa-4120-93a5-1c409555d28b",
     "LAB_STAGING_ROLLUP_ONLY", "lab-access-client.dpapi.json", "lab-staging-ten-tokens.dpapi"
 )) {
-    if (-not $Home.Contains($Required)) { throw ("Guard missing in home staging setup: " + $Required) }
+    if (-not $HomeSource.Contains($Required)) { throw ("Guard missing in home staging setup: " + $Required) }
 }
-foreach ($Source in @($Transfer, $Home)) {
+foreach ($Source in @($Transfer, $HomeSource)) {
     if ($Source -match '(?i)wrangler\s+(deploy|d1\s+(delete|migrations|execute))' -or
         $Source -match '(?i)https?://(api|app|admin)\.maltworks\.com\.br/') {
         throw "Desktop preparation scripts must never deploy or mutate Cloudflare."
