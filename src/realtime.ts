@@ -8,6 +8,7 @@ import {
   deliverNotificationEmails,
   OFFLINE_AFTER_SECONDS,
   recordOfflineDevice,
+  recordDeviceOnline,
 } from "./notifications";
 import { ApiError, type TelemetryPayload } from "./types";
 import { maySkipPresenceWrite, type StoredRealtimePresence } from "./realtime-presence";
@@ -97,7 +98,15 @@ export class RealtimeHub extends DurableObject<Env> {
     if (role === "device" && deviceId) {
       const now = epochSeconds();
       await this.touchPresence(deviceId, now);
+      // WebSocket-only recovery must also resolve a stale D1 offline alert.
+      // This runs once per authenticated connection, never on each heartbeat.
+      // The helper is idempotent even if HTTP telemetry arrives concurrently.
+      const recoveredNotifications = await recordDeviceOnline(this.env, deviceId, now);
       this.broadcast({ type: "presence", deviceId, status: "online", lastSeenAt: now });
+      if (recoveredNotifications.length) {
+        this.broadcast({ type: "notifications_changed", changedAt: now });
+        this.ctx.waitUntil(deliverNotificationEmails(this.env, recoveredNotifications));
+      }
       await this.sendPendingCommand(deviceId);
     }
 
