@@ -115,19 +115,77 @@ test("staging sender uses the real telemetry contract without customer routes", 
   assert.equal(calls[0].payload.sentAt + 30, calls[2].payload.sentAt);
 });
 
-test("offline test preserves silent periods and 30s pacing", async () => {
+test("offline test preserves silent periods and 30s measured pacing", async () => {
   const delays = [];
+  let clockMs = 0;
   const result = await runLabStaging({
     endpoint: local, tokens: tokens(1), ticks: 12, paceMs: 30_000,
     scenario: "offline", startAt: 1_800_000_000, sessionId: 24,
   }, {
     fetchImpl: async () => accepted(),
-    sleep: async (ms) => delays.push(ms),
+    sleep: async (ms) => { delays.push(ms); clockMs += ms; },
+    nowMs: () => clockMs,
   });
   assert.equal(result.delivered, 6);
   assert.equal(result.omitted, 6);
   assert.equal(result.timingValid, true);
   assert.deepEqual(delays, Array(11).fill(30_000));
+  assert.equal(result.elapsedMs, 330_000);
+  assert.equal(result.averageTickIntervalMs, 30_000);
+  assert.equal(result.maxStartLagMs, 0);
+});
+
+test("ten-device async responses do not delay the next absolute tick", async () => {
+  let clockMs = 0;
+  const starts = [];
+  const result = await runLabStaging({
+    endpoint: local, tokens: tokens(10), devices: 10, ticks: 3,
+    paceMs: 30_000, startAt: 1_800_000_000, sessionId: 25,
+  }, {
+    fetchImpl: async (_url, options) => {
+      starts.push({ id: options.headers["X-Maltworks-Device-ID"], time: clockMs });
+      // Synthetic elapsed time shared by the batch; prove no extra sleep
+      // is added to the 30s schedule after HTTP has consumed time.
+      return accepted();
+    },
+    sleep: async (ms) => { clockMs += ms; },
+    nowMs: () => clockMs,
+  });
+  assert.equal(starts.length, 30);
+  assert.deepEqual([...new Set(starts.map((x) => x.time))], [0, 30_000, 60_000]);
+  assert.equal(result.elapsedMs, 60_000);
+  assert.equal(result.timingValid, true);
+});
+
+test("measured timing rejects scheduler lag even when configured pace is 30s", async () => {
+  let clockMs = 0;
+  const result = await runLabStaging({
+    endpoint: local, tokens: tokens(1), ticks: 3, paceMs: 30_000,
+  }, {
+    fetchImpl: async () => {
+      clockMs += 6_000;
+      return accepted();
+    },
+    sleep: async (ms) => { clockMs += ms; },
+    nowMs: () => clockMs,
+  });
+  // HTTP 6s and 30s absolute cadence still leaves 24s between batches.
+  assert.equal(result.timingValid, true);
+  assert.equal(result.averageTickIntervalMs, 30_000);
+
+  clockMs = 0;
+  const delayed = await runLabStaging({
+    endpoint: local, tokens: tokens(1), ticks: 3, paceMs: 30_000,
+  }, {
+    fetchImpl: async () => {
+      clockMs += 35_000;
+      return accepted();
+    },
+    sleep: async (ms) => { clockMs += ms; },
+    nowMs: () => clockMs,
+  });
+  assert.equal(delayed.timingValid, false);
+  assert.equal(delayed.minTickIntervalMs, 35_000);
 });
 
 test("pending device, redirects and rejected requests stop without leaking secrets", async () => {
