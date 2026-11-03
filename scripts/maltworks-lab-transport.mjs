@@ -11,6 +11,9 @@ import { labDeviceId, makeLabTelemetry } from "./maltworks-lab.mjs";
 
 export const LAB_MAX_STAGING_DEVICES = 10;
 export const LAB_MAX_STAGING_TICKS = 120;
+// Controlled soak outage: only LAB device zero, between 15:00 and 17:30.
+export const LAB_SOAK_OUTAGE_START_TICK = 30;
+export const LAB_SOAK_OUTAGE_END_TICK = 34;
 const DEVICE_TOKEN_RE = /^[a-f0-9]{64}$/i;
 
 function isLoopback(hostname) {
@@ -87,7 +90,7 @@ export async function runLabStaging({
   intervalSeconds = 30, paceMs = 30_000,
   startAt = Math.floor(Date.now() / 1000),
   sessionId = randomInt(0, 2048),
-  accessClientId, accessClientSecret,
+  accessClientId, accessClientSecret, soakOutage = false,
 }, { fetchImpl = fetch, sleep = delay, nowMs = () => performance.now() } = {}) {
   const url = requireLabEndpoint(endpoint);
   if (!Number.isInteger(devices) || devices < 1 || devices > LAB_MAX_STAGING_DEVICES) {
@@ -98,6 +101,13 @@ export async function runLabStaging({
   }
   if (intervalSeconds !== 30) {
     throw new Error("Free pilot staging uses exactly 30-second telemetry frames");
+  }
+  if (soakOutage !== false && soakOutage !== true) {
+    throw new Error("Soak outage flag must be boolean");
+  }
+  if (soakOutage && (devices !== 10 || ticks !== 60 || scenario !== "normal" ||
+      paceMs !== 30_000 || url.hostname !== "api-staging.maltworks.com.br")) {
+    throw new Error("Controlled soak outage requires exactly 10 staging devices, 60 ticks and 30s pacing");
   }
   if (!Number.isInteger(paceMs) || paceMs < 0 || paceMs > 60_000) {
     throw new Error("Invalid staging pacing");
@@ -154,6 +164,11 @@ export async function runLabStaging({
     // A rejected device stops the pilot without leaking its credentials.
     const requests = [];
     for (let index = 0; index < devices; index++) {
+      if (soakOutage && index === 0 && tick >= LAB_SOAK_OUTAGE_START_TICK &&
+          tick <= LAB_SOAK_OUTAGE_END_TICK) {
+        omitted++;
+        continue;
+      }
       const frame = makeLabTelemetry(index, tick, {
         scenario, intervalSeconds, startAt, sessionId,
       });
@@ -211,7 +226,9 @@ export async function runLabStaging({
   return {
     target: url.origin,
     devices, ticks, intervalSeconds, paceMs,
-    delivered, omitted,
+    delivered, omitted, soakOutage,
+    outageDevice: soakOutage ? labDeviceId(0) : null,
+    outageTicks: soakOutage ? [LAB_SOAK_OUTAGE_START_TICK, LAB_SOAK_OUTAGE_END_TICK] : null,
     elapsedMs: Math.round(nowMs() - startedAtMs),
     averageTickIntervalMs: ticks > 1 ? Math.round(intervalSumMs / (ticks - 1)) : null,
     minTickIntervalMs: ticks > 1 ? Math.round(minTickIntervalMs) : null,
