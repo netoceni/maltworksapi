@@ -15,7 +15,8 @@
     "TELEMETRY_RETENTION_DAYS": "0",
     "HISTORY_5MIN_RETENTION_DAYS": "0",
     "HISTORY_HOURLY_RETENTION_DAYS": "0",
-    "LAB_STAGING_ROLLUP_ONLY": "true"
+    "LAB_STAGING_ROLLUP_ONLY": "true",
+    "LAB_STAGING_ENABLE_RETENTION": "false"
   },
   "durable_objects": {
     "bindings": [
