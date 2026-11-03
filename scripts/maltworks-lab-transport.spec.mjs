@@ -256,3 +256,35 @@ test("30-minute staging soak skips exactly five HTTP packets for device zero", a
     assert.equal(seen.get(labDeviceId(i)).length, 60);
   }
 });
+
+test("HTTP simulator exposes safe tick and device on a partial batch failure", async () => {
+  const observed = [];
+  let clockMs = 0;
+  await assert.rejects(
+    runLabStaging({
+      endpoint: remote, tokens: tokens(2), devices: 2, ticks: 3,
+      paceMs: 30_000, startAt: 1_800_000_000,
+      accessClientId: "test-access-id", accessClientSecret: "test-access-secret",
+    }, {
+      fetchImpl: async (_url, options) => {
+        const packet = JSON.parse(options.body);
+        if (packet.deviceId === labDeviceId(1) && packet.sequence === 2) {
+          return { status: 503, json: async () => ({}) };
+        }
+        return accepted();
+      },
+      sleep: async (ms) => { clockMs += ms; },
+      nowMs: () => clockMs,
+      onTick: (progress) => observed.push(progress),
+    }),
+    (error) => {
+      assert.match(error.message, /tick 2\/3, device MW-C00000000001:.*HTTP 503/);
+      assert.ok(!error.message.includes(TOKEN));
+      assert.ok(!error.message.includes("test-access-secret"));
+      return true;
+    },
+  );
+  assert.deepEqual(observed, [{
+    tick: 1, totalTicks: 3, delivered: 2, omitted: 0,
+  }]);
+});
