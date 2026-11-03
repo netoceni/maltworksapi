@@ -83,19 +83,17 @@ jobs:
           if ($firstHelper -lt 0 -or $secondHelper -lt 0 -or $thirdHelper -lt 0) {
             throw "Function anchors missing from test source"
           }
+          $imports = $cf + "`n" + $index + "`n" + $notify + "`n" + $simulator + "`n"
+          $baseConst = 'const BASE = "https://api-staging.maltworks.com.br";'
+          $idConst = 'const DEVICE_ID = labDeviceId(1);'
+          $tokenConst = 'const TOKEN = "ce".repeat(32);'
           $cases = @(
-            @{ label = "minimal"; content = $basic },
-            @{ label = "constants-only"; content = ($header.Substring(0, $firstHelper) + "`n" + $rest) },
-            @{ label = "transmit-helper-only"; content = ($header.Substring(0, $secondHelper) + "`n" + $rest) },
-            @{ label = "transmit-plus-online-count"; content = ($header.Substring(0, $thirdHelper) + "`n" + $rest) },
-            @{ label = "cloudflare-import"; content = ($cf + "`n" + $basic) },
-            @{ label = "index-import"; content = ($index + "`n" + $basic) },
-            @{ label = "notifications-import"; content = ($notify + "`n" + $basic) },
-            @{ label = "simulator-import"; content = ($simulator + "`n" + $basic) },
-            @{ label = "index-and-notifications"; content = ($index + "`n" + $notify + "`n" + $basic) },
-            @{ label = "all-imports"; content = ($cf + "`n" + $index + "`n" + $notify + "`n" + $simulator + "`n" + $basic) },
-            @{ label = "imports-and-helpers"; content = ($header + "`n" + $rest) },
-            @{ label = "original-copy"; content = $source }
+            @{ label = "only-base-constant"; content = ($imports + $baseConst + "`n" + $basic) },
+            @{ label = "only-device-id-constant"; content = ($imports + $idConst + "`n" + $basic) },
+            @{ label = "only-token-constant"; content = ($imports + $tokenConst + "`n" + $basic) },
+            @{ label = "all-three-constants"; content = ($imports + $baseConst + "`n" + $idConst + "`n" + $tokenConst + "`n" + $basic) },
+            @{ label = "original-header-constants"; content = ($header.Substring(0, $firstHelper) + "`n" + $rest) },
+            @{ label = "original-header-no-comment"; content = ((($header.Substring(0, $firstHelper)) -replace '// @ts-expect-error[^\\r\\n]+\\r?\\n','') + "`n" + $rest) }
           )
           foreach ($case in $cases) {
             Write-Host ("DIAGNOSTIC CASE: " + $case.label)
