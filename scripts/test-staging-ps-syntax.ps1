@@ -9,7 +9,8 @@ $Files = @(
     (Join-Path $PSScriptRoot "06-websocket-lab.ps1"),
     (Join-Path $PSScriptRoot "07-estabilidade-integrada-lab.ps1"),
     (Join-Path $PSScriptRoot "08-transferir-lab-entre-pcs.ps1"),
-    (Join-Path $PSScriptRoot "09-preparar-desktop-lab.ps1")
+    (Join-Path $PSScriptRoot "09-preparar-desktop-lab.ps1"),
+    (Join-Path $PSScriptRoot "10-auditar-http-lab.ps1")
 )
 foreach ($File in $Files) {
     $Tokens = $null
@@ -250,3 +251,27 @@ foreach ($Source in @($Transfer, $HomeSource)) {
     }
 }
 Write-Host "Home desktop and AES credential transfer: static checks approved." -ForegroundColor Green
+
+# An interrupted soak is audited with only SELECT queries on the staging D1.
+$Postmortem = Get-Content -LiteralPath $Files[8] -Raw
+foreach ($Required in @(
+    "lab-soak-30min-last.json",
+    "maltworks-lab-stage-preflight.mjs",
+    "26b9ecab-1aaa-4120-93a5-1c409555d28b",
+    "LAB_STAGING_ROLLUP_ONLY",
+    "SELECT d.id AS controlador",
+    "SELECT CAST(",
+    "--remote --config",
+    "--json --command",
+    "somente leitura"
+)) {
+    if (-not $Postmortem.ToLowerInvariant().Contains($Required.ToLowerInvariant())) {
+        throw ("Read-only D1 postmortem guard missing: " + $Required)
+    }
+}
+if ($Postmortem -match '(?i)wrangler\s+(deploy|d1\s+(delete|migrations))' -or
+    $Postmortem -match '(?i)https?://(api|app|admin)\.maltworks\.com\.br/' -or
+    $Postmortem -match '(?i)\b(INSERT\s+INTO|UPDATE\s+\w+|DELETE\s+FROM|DROP\s+TABLE)\b') {
+    throw "Read-only postmortem must never deploy, send telemetry or mutate D1."
+}
+Write-Host "Read-only historical D1 audit: safeguards approved." -ForegroundColor Green
