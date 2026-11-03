@@ -7,7 +7,9 @@ $Files = @(
     (Join-Path $PSScriptRoot "03-configurar-access.ps1"),
     (Join-Path $PSScriptRoot "04-credencial-access-lab.ps1"),
     (Join-Path $PSScriptRoot "06-websocket-lab.ps1"),
-    (Join-Path $PSScriptRoot "07-estabilidade-integrada-lab.ps1")
+    (Join-Path $PSScriptRoot "07-estabilidade-integrada-lab.ps1"),
+    (Join-Path $PSScriptRoot "08-transferir-lab-entre-pcs.ps1"),
+    (Join-Path $PSScriptRoot "09-preparar-desktop-lab.ps1")
 )
 foreach ($File in $Files) {
     $Tokens = $null
@@ -220,3 +222,31 @@ if ($Soak -match '(?i)\b(DROP\s+TABLE|DELETE\s+FROM|UPDATE\s+notification_states
     throw "Integrated soak must perform no direct D1 writes."
 }
 Write-Host "Integrated Maltworks Lab: staging and syntax safeguards approved." -ForegroundColor Green
+
+# Second-PC readiness and offline AES-GCM transfer: check syntax and hard guards.
+$Transfer = Get-Content -LiteralPath $Files[6] -Raw
+foreach ($Required in @(
+    "Exportar", "Importar", "Read-Host", "-AsSecureString",
+    "MALTWORKS_LAB_STAGING_PORTABLE_V1", "maltworks-lab-vault-crypto.mjs",
+    "lab-access-client.dpapi.json", "lab-staging-ten-tokens.dpapi",
+    "Maltworks", "Nao grave bundles", "Nao sobrescrever",
+    "lab-staging", "test/staging-history-lab-free10-20261028"
+)) {
+    if (-not $Transfer.Contains($Required)) { throw ("Guard missing in vault transfer: " + $Required) }
+}
+$Home = Get-Content -LiteralPath $Files[7] -Raw
+foreach ($Required in @(
+    "PrepararLocal", "Checar", "maltworks-lab-stage-preflight.mjs",
+    "wrangler.lab-staging.example.jsonc", "REPLACE_WITH_NEW_STAGING_D1_UUID",
+    "26b9ecab-1aaa-4120-93a5-1c409555d28b",
+    "LAB_STAGING_ROLLUP_ONLY", "lab-access-client.dpapi.json", "lab-staging-ten-tokens.dpapi"
+)) {
+    if (-not $Home.Contains($Required)) { throw ("Guard missing in home staging setup: " + $Required) }
+}
+foreach ($Source in @($Transfer, $Home)) {
+    if ($Source -match '(?i)wrangler\s+(deploy|d1\s+(delete|migrations|execute))' -or
+        $Source -match '(?i)https?://(api|app|admin)\.maltworks\.com\.br/') {
+        throw "Desktop preparation scripts must never deploy or mutate Cloudflare."
+    }
+}
+Write-Host "Home desktop and AES credential transfer: static checks approved." -ForegroundColor Green
