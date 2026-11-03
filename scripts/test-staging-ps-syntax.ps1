@@ -204,7 +204,7 @@ foreach ($Required in @(
     "heartbeat_ack",
     "Ler-Estados",
     "--json --command",
-    "Offline",
+    "offline_events",
     "595"
 )) {
     if (-not $Soak.Contains($Required)) {
