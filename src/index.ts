@@ -15,7 +15,7 @@ import {
 } from "./devices";
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
-import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
+import { runTelemetryRetention, shouldPruneTelemetry, scheduledJobGates } from "./retention";
 import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
 import { aggregatedDeviceHistory } from "./history-query";
 import { adminIntelligentHistoryHealth } from "./history-health";
@@ -92,11 +92,9 @@ export default {
   },
   scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
     ctx.waitUntil((async () => {
-      // Archiving must precede pruning, never the other way around.
-      // Rollup-only staging must never run automatic raw or archive deletion.
-      // This guard is opt-in; production behavior is unchanged when the flag is absent.
-      const rollupOnly = (env as Env & { LAB_STAGING_ROLLUP_ONLY?: string })
-        .LAB_STAGING_ROLLUP_ONLY === "true";
+      // Archive first. The isolated Lab may opt into retention independently
+      // without running offline scans, notifications or other cron jobs.
+      const jobs = scheduledJobGates(env);
       if (shouldRollupHistory(controller.scheduledTime)) {
         try {
           await runIntelligentHistoryRollup(env, controller.scheduledTime);
@@ -106,9 +104,8 @@ export default {
           });
         }
       }
-      // Rollup-only staging deliberately skips retention, daily health, offline
-      // scans and notification publishing; other environments stay unchanged.
-      if (rollupOnly) return;
+      // Default Lab configuration stops after archiving (all expiries disabled).
+      if (!jobs.retention) return;
       if (shouldPruneTelemetry(controller.scheduledTime)) {
         try {
           await runTelemetryRetention(env, controller.scheduledTime);
@@ -127,6 +124,8 @@ export default {
           });
         }
       }
+      // Lab retention mode must not accidentally activate production housekeeping.
+      if (!jobs.maintenance) return;
       if (shouldRunD1DailyHealth(controller.scheduledTime)) {
         try {
           await runD1DailyHealth(env, controller.scheduledTime);
