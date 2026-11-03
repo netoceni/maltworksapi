@@ -88,7 +88,7 @@ export async function runLabStaging({
   startAt = Math.floor(Date.now() / 1000),
   sessionId = randomInt(0, 2048),
   accessClientId, accessClientSecret,
-}, { fetchImpl = fetch, sleep = delay } = {}) {
+}, { fetchImpl = fetch, sleep = delay, nowMs = () => performance.now() } = {}) {
   const url = requireLabEndpoint(endpoint);
   if (!Number.isInteger(devices) || devices < 1 || devices > LAB_MAX_STAGING_DEVICES) {
     throw new Error("Remote staging supports 1-10 devices");
@@ -115,7 +115,44 @@ export async function runLabStaging({
   }
   let delivered = 0;
   let omitted = 0;
+
+  // Use absolute, monotonic deadlines: HTTP time must not be added to the
+  // configured cadence. The previous sequential ten-device loop took ~49 min
+  // for 60 x 30s ticks because it slept 30s *after* all HTTP calls.
+  const startedAtMs = nowMs();
+  const toleranceMs = 2_000;
+  let previousTickStartMs = null;
+  let minTickIntervalMs = Infinity;
+  let maxTickIntervalMs = 0;
+  let intervalSumMs = 0;
+  let maxStartLagMs = 0;
+  let timingValid = paceMs === intervalSeconds * 1000 && ticks > 1;
+
   for (let tick = 0; tick < ticks; tick++) {
+    if (tick > 0 && paceMs > 0) {
+      const remainingMs = startedAtMs + tick * paceMs - nowMs();
+      if (remainingMs > 0) await sleep(remainingMs);
+    }
+
+    const tickStartedMs = nowMs();
+    if (paceMs > 0) {
+      const lagMs = Math.max(0, tickStartedMs - (startedAtMs + tick * paceMs));
+      maxStartLagMs = Math.max(maxStartLagMs, lagMs);
+      if (lagMs > toleranceMs) timingValid = false;
+    }
+    if (previousTickStartMs !== null) {
+      const gapMs = tickStartedMs - previousTickStartMs;
+      minTickIntervalMs = Math.min(minTickIntervalMs, gapMs);
+      maxTickIntervalMs = Math.max(maxTickIntervalMs, gapMs);
+      intervalSumMs += gapMs;
+      if (Math.abs(gapMs - paceMs) > toleranceMs) timingValid = false;
+    }
+    previousTickStartMs = tickStartedMs;
+
+    // Ten independent devices are sent concurrently, not serially. Wait
+    // until all in-flight requests settle before starting the next tick.
+    // A rejected device stops the pilot without leaking its credentials.
+    const requests = [];
     for (let index = 0; index < devices; index++) {
       const frame = makeLabTelemetry(index, tick, {
         scenario, intervalSeconds, startAt, sessionId,
@@ -135,41 +172,53 @@ export async function runLabStaging({
         headers["CF-Access-Client-Id"] = accessClientId;
         headers["CF-Access-Client-Secret"] = accessClientSecret;
       }
-      let response;
-      try {
-        response = await fetchImpl(url.href, {
-          method: "POST",
-          headers,
-          redirect: "error",
-          cache: "no-store",
-          body: JSON.stringify(frame),
-          signal: AbortSignal.timeout(10_000),
-        });
-      } catch {
-        throw new Error("Lab staging request failed or was redirected; stopping safely");
-      }
-      if (response.status !== 200) {
-        if (response.status === 202) {
-          throw new Error("Staging device is pending; claim it in the staging organization first");
+      requests.push((async () => {
+        let response;
+        try {
+          response = await fetchImpl(url.href, {
+            method: "POST",
+            headers,
+            redirect: "error",
+            cache: "no-store",
+            body: JSON.stringify(frame),
+            signal: AbortSignal.timeout(10_000),
+          });
+        } catch {
+          throw new Error("Lab staging request failed or was redirected; stopping safely");
         }
-        throw new Error("Staging telemetry rejected (HTTP " + response.status + ")");
-      }
-      const result = await response.json().catch(() => null);
-      if (!result || result.ok !== true || result.accepted !== true ||
-          result.deviceStatus !== "active") {
-        throw new Error("Lab staging did not confirm an active test device");
-      }
-      delivered++;
+        if (response.status !== 200) {
+          if (response.status === 202) {
+            throw new Error("Staging device is pending; claim it in the staging organization first");
+          }
+          throw new Error("Staging telemetry rejected (HTTP " + response.status + ")");
+        }
+        const result = await response.json().catch(() => null);
+        if (!result || result.ok !== true || result.accepted !== true ||
+            result.deviceStatus !== "active") {
+          throw new Error("Lab staging did not confirm an active test device");
+        }
+      })());
     }
-    // Sleeping across silent ticks is essential to reproduce offline alarms.
-    if (tick < ticks - 1 && paceMs > 0) await sleep(paceMs);
+    const outcomes = await Promise.allSettled(requests);
+    let failure = null;
+    for (const outcome of outcomes) {
+      if (outcome.status === "fulfilled") delivered++;
+      else if (!failure) failure = outcome.reason;
+    }
+    if (failure) throw failure;
   }
+
   return {
     target: url.origin,
     devices, ticks, intervalSeconds, paceMs,
     delivered, omitted,
-    timingValid: paceMs === intervalSeconds * 1000,
-    // Important: this is transport-only, not proof that D1/DO are isolated.
+    elapsedMs: Math.round(nowMs() - startedAtMs),
+    averageTickIntervalMs: ticks > 1 ? Math.round(intervalSumMs / (ticks - 1)) : null,
+    minTickIntervalMs: ticks > 1 ? Math.round(minTickIntervalMs) : null,
+    maxTickIntervalMs: ticks > 1 ? Math.round(maxTickIntervalMs) : null,
+    maxStartLagMs: Math.round(maxStartLagMs),
+    timingValid,
+    // Transport-only: not proof that D1, DO, quotas, or production are isolated.
     environment: "staging",
   };
 }
