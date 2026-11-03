@@ -90,7 +90,7 @@ function Enviar-Evento(
     $Segment = [System.ArraySegment[byte]]::new($Bytes)
     $Cancel = [System.Threading.CancellationTokenSource]::new(12000)
     try {
-        $Socket.SendAsync(
+        $null = $Socket.SendAsync(
             $Segment,
             [System.Net.WebSockets.WebSocketMessageType]::Text,
             $true,
@@ -116,7 +116,7 @@ function Abrir-Dispositivo(
         $Socket.Options.SetRequestHeader("X-Maltworks-Firmware", "5.5.2-lab")
         $Cancel = [System.Threading.CancellationTokenSource]::new(15000)
         try {
-            $Socket.ConnectAsync($WsEndpoint, $Cancel.Token).GetAwaiter().GetResult()
+            $null = $Socket.ConnectAsync($WsEndpoint, $Cancel.Token).GetAwaiter().GetResult()
         } finally {
             $Cancel.Dispose()
         }
@@ -128,6 +128,8 @@ function Abrir-Dispositivo(
             [int]$Ready.offlineAfterSeconds -ne 90) {
             throw "Resposta ready nao corresponde ao protocolo esperado."
         }
+        # ConnectAsync task results (VoidTaskResult) must not leak into the
+        # function output; only the ClientWebSocket handle is returned.
         # Suppress any incidental pipeline output: return exactly one handle.
         Write-Output -NoEnumerate -InputObject $Socket
     } catch {
@@ -142,7 +144,7 @@ function Fechar-Socket([System.Net.WebSockets.ClientWebSocket] $Socket) {
         if ($Socket.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
             $Cancel = [System.Threading.CancellationTokenSource]::new(3000)
             try {
-                $Socket.CloseAsync(
+                $null = $Socket.CloseAsync(
                     [System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure,
                     "Lab test complete",
                     $Cancel.Token
