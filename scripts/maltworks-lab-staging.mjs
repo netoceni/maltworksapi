@@ -20,13 +20,18 @@ const SCENARIOS = new Set(["normal", "alarm", "sensor-loss", "reboot", "offline"
 export function parseLabStageArgs(argv) {
   const result = {
     send: false, endpoint: null, devices: 1, ticks: 12,
-    paceMs: 30_000, scenario: "normal",
+    paceMs: 30_000, scenario: "normal", soakOutage: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--send") {
       if (result.send) throw new Error("Duplicate --send");
       result.send = true;
+      continue;
+    }
+    if (arg === "--soak-outage") {
+      if (result.soakOutage) throw new Error("Duplicate --soak-outage");
+      result.soakOutage = true;
       continue;
     }
     if (!["--endpoint", "--devices", "--ticks", "--pace-ms", "--scenario"].includes(arg)) {
@@ -56,6 +61,12 @@ export function parseLabStageArgs(argv) {
     throw new Error("Invalid Lab pacing");
   }
   if (result.send) requireLabEndpoint(result.endpoint);
+  if (result.soakOutage && (!result.send ||
+      result.endpoint !== "https://api-staging.maltworks.com.br/v1/telemetry" ||
+      result.devices !== 10 || result.ticks !== 60 || result.paceMs !== 30_000 ||
+      result.scenario !== "normal")) {
+    throw new Error("Soak outage is restricted to 10 controllers, 60 ticks and fixed staging URL");
+  }
   return result;
 }
 
