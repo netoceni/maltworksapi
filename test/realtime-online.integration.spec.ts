@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import "../src/index";
 import { recordDeviceOnline, recordOfflineDevice } from "../src/notifications";
 // @ts-expect-error Node ESM simulator has no TS declarations; API validates payload.
-import { labDeviceId, makeLabTelemetry } from "../scripts/maltworks-lab.mjs";
+import { makeLabTelemetry } from "../scripts/maltworks-lab.mjs";
 
 const BASE = "https://api-staging.maltworks.com.br";
-const DEVICE_ID = labDeviceId(1);
+// Stable fixture identity: avoid eager simulator evaluation during Windows workerd module loading.
+const DEVICE_ID = "MW-C00000000001";
 const TOKEN = "ce".repeat(32);
 
 async function transmit(tick: number): Promise<Response> {
