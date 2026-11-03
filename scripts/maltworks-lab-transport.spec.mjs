@@ -203,3 +203,56 @@ test("pending device, redirects and rejected requests stop without leaking secre
     return /failed or was redirected/.test(error.message);
   });
 });
+
+test("integrated soak outage CLI only allows the fixed isolated lab scenario", () => {
+  const good = [
+    "--send", "--endpoint", remote, "--devices", "10", "--ticks", "60",
+    "--pace-ms", "30000", "--scenario", "normal", "--soak-outage",
+  ];
+  assert.equal(parseLabStageArgs(good).soakOutage, true);
+  for (const args of [
+    good.filter((x) => x !== "--send"),
+    good.filter((x) => x !== "--soak-outage").concat(["--soak-outage", "--soak-outage"]),
+    good.map((x) => x === "60" ? "59" : x),
+    good.map((x) => x === "normal" ? "offline" : x),
+    good.map((x) => x === remote ? local : x),
+  ]) {
+    assert.throws(() => parseLabStageArgs(args));
+  }
+});
+
+test("30-minute staging soak skips exactly five HTTP packets for device zero", async () => {
+  const seen = new Map();
+  let clock = 0;
+  const result = await runLabStaging({
+    endpoint: remote, tokens: tokens(10), devices: 10, ticks: 60,
+    paceMs: 30_000, scenario: "normal", soakOutage: true,
+    startAt: 1_800_000_000, sessionId: 31,
+    accessClientId: "test-access-id", accessClientSecret: "test-access-secret",
+  }, {
+    fetchImpl: async (_url, options) => {
+      const frame = JSON.parse(options.body);
+      const tick = frame.sequence - 1;
+      const id = options.headers["X-Maltworks-Device-ID"];
+      const arr = seen.get(id) ?? [];
+      arr.push(tick);
+      seen.set(id, arr);
+      return accepted();
+    },
+    sleep: async (ms) => { clock += ms; },
+    nowMs: () => clock,
+  });
+  assert.equal(result.delivered, 595);
+  assert.equal(result.omitted, 5);
+  assert.equal(result.timingValid, true);
+  assert.equal(result.averageTickIntervalMs, 30_000);
+  assert.deepEqual(result.outageTicks, [30, 34]);
+  assert.equal(result.outageDevice, labDeviceId(0));
+  assert.equal(result.soakOutage, true);
+  assert.equal(seen.get(labDeviceId(0)).length, 55);
+  assert.ok([30, 31, 32, 33, 34].every((tick) =>
+    !seen.get(labDeviceId(0)).includes(tick)));
+  for (let i = 1; i < 10; i++) {
+    assert.equal(seen.get(labDeviceId(i)).length, 60);
+  }
+});
