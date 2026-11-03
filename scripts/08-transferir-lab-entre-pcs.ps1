@@ -64,11 +64,11 @@ function Validate-Bundle($Data) {
 }
 
 function Read-Password([bool] $Confirm) {
-    $Secure = Read-Host 'Senha forte de transferencia (20+ caracteres ASCII sem espacos)' -AsSecureString
+    $Secure = Read-Host 'Senha de transferencia (minimo 8 caracteres ASCII sem espacos)' -AsSecureString
     try { $Value = Read-Plain $Secure }
     finally { $Secure.Dispose() }
-    if ($Value -cnotmatch '^[\x21-\x7E]{20,128}$') {
-        throw 'Senha precisa ter 20-128 caracteres ASCII imprimiveis sem espacos.'
+    if ($Value -cnotmatch '^[\x21-\x7E]{8,128}$') {
+        throw 'Senha precisa ter 8-128 caracteres ASCII imprimiveis sem espacos.'
     }
     if ($Confirm) {
         $AgainSecure = Read-Host 'Repita a senha de transferencia' -AsSecureString
