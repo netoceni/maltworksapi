@@ -40,7 +40,7 @@ Se ambos os cofres estiverem presentes, exporte para um **caminho privado e fora
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\08-transferir-lab-entre-pcs.ps1" -Etapa Exportar -Arquivo "E:\maltworks-lab-transfer.enc.json"
 ```
 
-Digite duas vezes uma senha **forte, única**, de pelo menos 20 caracteres ASCII sem espaços (idealmente gerada por gerenciador de senhas). Nunca cole a senha nem o arquivo aqui, no repositório, em issues ou em chats. Guarde a senha separada do USB. Exportar não altera o cofre original.
+Digite duas vezes uma senha com **pelo menos 8 caracteres ASCII sem espaços**. Embora o script aceite oito caracteres, não é recomendável reutilizar a senha de acesso a outros serviços: uma senha curta e reutilizada reduz a proteção caso o arquivo seja copiado. Nunca cole a senha nem o arquivo aqui, no repositório, em issues ou em chats. Guarde o arquivo em meio privado e apague-o após confirmar a importação. Exportar não altera o cofre original.
 
 ## 2 — NO DESKTOP
 
