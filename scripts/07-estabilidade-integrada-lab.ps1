@@ -483,10 +483,10 @@ try {
             http = $HttpReport
             d1_size_before = (Campo $BeforeInfo "database_size")
             d1_size_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "database_size" })
-            d1_reads_24h_before = (Campo $BeforeInfo "rows_read_24h")
-            d1_reads_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "rows_read_24h" })
-            d1_writes_24h_before = (Campo $BeforeInfo "rows_written_24h")
-            d1_writes_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "rows_written_24h" })
+            d1_read_queries_24h_before = (Campo $BeforeInfo "read_queries_24h")
+            d1_read_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "read_queries_24h" })
+            d1_write_queries_24h_before = (Campo $BeforeInfo "write_queries_24h")
+            d1_write_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "write_queries_24h" })
             d1_before = $Before
             d1_outage = $Mid
             d1_recovered = $Recovered
@@ -494,7 +494,7 @@ try {
         }
         [System.IO.File]::WriteAllText($ReportFile, (($Report | ConvertTo-Json -Depth 8) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
         Write-Host ("Relatorio local sem credenciais: " + $ReportFile)
-        Write-Host "Contadores D1 24h nao isolam o ensaio; DO Analytics precisa ser consultado no painel."
+        Write-Host "Consultas D1 24h sao metricas de janela movel, nao linhas faturaveis. DO Analytics requer painel."
         foreach ($Path in @($OutputFile, $ErrorFile)) {
             Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
         }
