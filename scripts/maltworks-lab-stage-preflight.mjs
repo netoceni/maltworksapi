@@ -51,13 +51,19 @@ export function validateLabStageConfig(config) {
       config.vars?.TELEMETRY_PERSIST_INTERVAL_SECONDS !== "180") {
     throw new Error("Lab staging must not use production origins or telemetry config");
   }
-  // Explicit zeros avoid defaulting to destructive 7/90/365-day retention.
-  // A secondary Worker-level guard skips retention while rollup-only is set.
-  if (config.vars?.LAB_STAGING_ROLLUP_ONLY !== "true" ||
-      config.vars?.TELEMETRY_RETENTION_DAYS !== "0" ||
-      config.vars?.HISTORY_5MIN_RETENTION_DAYS !== "0" ||
-      config.vars?.HISTORY_HOURLY_RETENTION_DAYS !== "0") {
-    throw new Error("Staging retention must be explicitly disabled (0/0/0, rollup-only=true)");
+  // Retention is OFF by default. A separate explicit 7/90/365 policy
+  // permits archived, bounded pruning without activating other cron tasks.
+  const retentionFlag = config.vars?.LAB_STAGING_ENABLE_RETENTION;
+  const disabled = (retentionFlag === undefined || retentionFlag === "false") &&
+    config.vars?.TELEMETRY_RETENTION_DAYS === "0" &&
+    config.vars?.HISTORY_5MIN_RETENTION_DAYS === "0" &&
+    config.vars?.HISTORY_HOURLY_RETENTION_DAYS === "0";
+  const enabled = retentionFlag === "true" &&
+    config.vars?.TELEMETRY_RETENTION_DAYS === "7" &&
+    config.vars?.HISTORY_5MIN_RETENTION_DAYS === "90" &&
+    config.vars?.HISTORY_HOURLY_RETENTION_DAYS === "365";
+  if (config.vars?.LAB_STAGING_ROLLUP_ONLY !== "true" || !(disabled || enabled)) {
+    throw new Error("Lab staging retention requires 0/0/0 (disabled) or explicit 7/90/365 (enabled); rollup-only must stay true");
   }
   for (const key of Object.keys(config.vars ?? {})) {
     if (/(secret|token|pepper|password|private_key)/i.test(key)) {
@@ -79,6 +85,7 @@ export function validateLabStageConfig(config) {
     workersDevDisabled: true,
     cronDisabled: crons.length === 0,
     cronSchedule: crons.length ? crons[0] : null,
+    retentionEnabled: enabled,
     emailAndFirmwareBindingsDisabled: true,
   };
 }
