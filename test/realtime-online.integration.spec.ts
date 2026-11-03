@@ -2,20 +2,67 @@ import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import "../src/index";
 import { recordDeviceOnline, recordOfflineDevice } from "../src/notifications";
-// @ts-expect-error Node ESM simulator has no TS declarations; API validates payload.
-import { makeLabTelemetry } from "../scripts/maltworks-lab.mjs";
 
 const BASE = "https://api-staging.maltworks.com.br";
 // Stable fixture identity: avoid eager simulator evaluation during Windows workerd module loading.
 const DEVICE_ID = "MW-C00000000001";
 const TOKEN = "ce".repeat(32);
 
+// A pure fixture avoids loading the Node CLI simulator (node:url / process.argv)
+// into the Windows workerd test runtime. It is never sent to real staging.
+function makePayload(tick: number): Record<string, unknown> {
+  return {
+    schemaVersion: 1,
+    deviceId: DEVICE_ID,
+    bootId: "A1270001",
+    sequence: tick + 1,
+    sentAt: 1_800_000_000 + tick * 30,
+    uptimeSeconds: (tick + 1) * 30,
+    firmware: { product: "MaltworksController", version: "5.5.2", phase: "lab" },
+    network: { rssi: -58 },
+    temperatures: {
+      refrigerator: { connected: true, value: 18.25, raw: 18.25, offset: 0 },
+      thermalWell: { connected: true, value: 18.1, raw: 18.1, offset: 0 },
+    },
+    control: {
+      setpoint: 18,
+      hysteresis: 0.5,
+      state: "STABLE",
+      cooling: false,
+      heating: false,
+      compressorProtectionSeconds: 0,
+      compressorProtectionDurationSeconds: 180,
+    },
+    profile: {
+      active: false,
+      paused: false,
+      name: "",
+      state: "IDLE",
+      stage: 0,
+      stageCount: 0,
+      remainingSeconds: 0,
+    },
+    alarms: {
+      active: false,
+      unacknowledged: false,
+      count: 0,
+      summary: "Nenhum alarme",
+      configuration: {
+        sensorAlarmEnabled: true,
+        highTemperatureEnabled: true,
+        lowTemperatureEnabled: true,
+        responseAlarmEnabled: true,
+        highTemperatureLimit: 35,
+        lowTemperatureLimit: -5,
+        minimumExpectedChange: 0.5,
+        responseTimeoutSeconds: 5400,
+      },
+    },
+  };
+}
+
 async function transmit(tick: number): Promise<Response> {
-  const payload = makeLabTelemetry(1, tick, {
-    scenario: "normal",
-    sessionId: 97,
-    startAt: 1_800_000_000,
-  });
+  const payload = makePayload(tick);
   return exports.default.fetch(BASE + "/v1/telemetry", {
     method: "POST",
     headers: {
