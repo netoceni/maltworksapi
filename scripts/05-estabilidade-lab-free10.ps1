@@ -184,6 +184,11 @@ try {
         delivered = $Result.delivered
         omitted = $Result.omitted
         timing_valid = $Result.timingValid
+        elapsed_ms = $Result.elapsedMs
+        average_tick_interval_ms = $Result.averageTickIntervalMs
+        min_tick_interval_ms = $Result.minTickIntervalMs
+        max_tick_interval_ms = $Result.maxTickIntervalMs
+        max_start_lag_ms = $Result.maxStartLagMs
         size_bytes_before = $Before.database_size
         size_bytes_after = $After.database_size
         rows_written_24h_before = $Before.rows_written_24h
