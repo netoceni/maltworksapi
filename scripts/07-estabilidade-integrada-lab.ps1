@@ -304,6 +304,11 @@ try {
     $After = $null
     $AfterInfo = $null
     $HttpReport = $null
+    $HttpExitCode = $null
+    $HttpLastProgress = $null
+    $HttpFailureSummary = $null
+    $HttpErrorLog = $null
+    $HttpOutputLog = $null
     $Process = $null
     $Timer = $null
     $AckCount = 0
@@ -423,7 +428,11 @@ try {
         }
 
         if (-not $Process.WaitForExit(20000)) { throw "HTTP nao concluiu; nao repetir sem auditoria." }
-        if ($Process.ExitCode -ne 0) { throw "Emissor HTTP falhou; nao repetir sem auditoria." }
+        if ($Process.ExitCode -ne 0) {
+            $HttpExitCode = $Process.ExitCode
+            throw ("Emissor HTTP falhou (codigo de saida " + $HttpExitCode + "); nao repetir sem auditoria.")
+        }
+        $HttpExitCode = $Process.ExitCode
         $HttpReport = (Get-Content -LiteralPath $OutputFile -Raw) | ConvertFrom-Json
         if ($HttpReport.environment -cne "staging" -or
             $HttpReport.delivered -ne 595 -or $HttpReport.omitted -ne 5 -or
@@ -459,10 +468,152 @@ try {
                     $Process.Kill()
                     $null = $Process.WaitForExit(5000)
                 }
+                if ($Process.HasExited) { $HttpExitCode = $Process.ExitCode }
             } catch {}
             $Process.Dispose()
         }
         if ($null -ne $Timer -and $Timer.IsRunning) { $Timer.Stop() }
+
+        # Child stderr is intentionally kept separate from JSON stdout.
+        # Only summarize a strict allowlist of diagnostic messages; do not
+        # copy arbitrary stderr (which might contain secrets) into reports.
+        if (Test-Path -LiteralPath $ErrorFile -PathType Leaf) {
+            $Lines = @(Get-Content -LiteralPath $ErrorFile -ErrorAction SilentlyContinue)
+            foreach ($Line in $Lines) {
+                if ($Line -match '^Maltworks Lab progress: tick=(?:[1-9]|[1-5][0-9]|60)/60 delivered=[0-9]{1,3} omitted=[0-5]
+            result = $RunStatus
+            environment = "staging"
+            started_at_utc = $Start.ToString("o")
+            finished_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
+            controllers = 10
+            ticks = 60
+            outage_device = "MW-C00000000000"
+            outage_ticks = "30..34"
+            ws_acks = $AckCount
+            ws_omitted = $OmittedWS
+            ws_cadence_valid = $CadenceOk
+            ws_min_tick_ms = $(if ([double]::IsPositiveInfinity($GapMin)) { $null } else { [int][Math]::Round($GapMin) })
+            ws_max_tick_ms = [int][Math]::Round($GapMax)
+            ws_avg_tick_ms = [int][Math]::Round($GapSum / 59)
+            ws_max_lag_ms = [int][Math]::Round($LagMax)
+            pending_commands = $script:ComandosPendentes
+            http = $HttpReport
+            http_exit_code = $HttpExitCode
+            http_last_progress = $HttpLastProgress
+            http_failure_summary = $HttpFailureSummary
+            http_stderr_log_local = $HttpErrorLog
+            http_stdout_log_local = $HttpOutputLog
+            d1_size_before = (Campo $BeforeInfo "database_size")
+            d1_size_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "database_size" })
+            d1_read_queries_24h_before = (Campo $BeforeInfo "read_queries_24h")
+            d1_read_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "read_queries_24h" })
+            d1_write_queries_24h_before = (Campo $BeforeInfo "write_queries_24h")
+            d1_write_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "write_queries_24h" })
+            d1_before = $Before
+            d1_outage = $Mid
+            d1_recovered = $Recovered
+            d1_final = $After
+        }
+        [System.IO.File]::WriteAllText($ReportFile, (($Report | ConvertTo-Json -Depth 8) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+        Write-Host ("Relatorio local sem credenciais: " + $ReportFile)
+        if ($RunStatus -cne "passed") {
+            Write-Host ("Emissor HTTP, codigo de saida: " + $HttpExitCode)
+            if ($HttpLastProgress) { Write-Host $HttpLastProgress }
+            if ($HttpFailureSummary) { Write-Host $HttpFailureSummary }
+            Write-Host "Logs brutos preservados apenas no perfil Windows; nao compartilhe logs brutos sem revisao."
+        }
+        Write-Host "Consultas D1 24h sao metricas de janela movel, nao linhas faturaveis. DO Analytics requer painel."
+        foreach ($Path in @($OutputFile, $ErrorFile)) {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        }
+    }
+} finally {
+    foreach ($Socket in $Connections.Values) {
+        if ($Socket -is [System.Net.WebSockets.ClientWebSocket]) { Fechar-Socket $Socket }
+    }
+    $ClientId = $null
+    $ClientSecret = $null
+    $PlainTokens = $null
+    $DeviceTokens = $null
+    Pop-Location
+}
+) {
+                    $HttpLastProgress = $Line
+                }
+                if ($Line -match '^Maltworks Lab: (?:Lab staging HTTP batch failed at tick (?:[1-9]|[1-5][0-9]|60)/60, device MW-C[0-9]{11}: )?(?:Lab staging request failed or was redirected; stopping safely|Staging telemetry rejected \\(HTTP [1-5][0-9]{2}\\)|Staging device is pending; claim it in the staging organization first|Lab staging did not confirm an active test device)
+            result = $RunStatus
+            environment = "staging"
+            started_at_utc = $Start.ToString("o")
+            finished_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
+            controllers = 10
+            ticks = 60
+            outage_device = "MW-C00000000000"
+            outage_ticks = "30..34"
+            ws_acks = $AckCount
+            ws_omitted = $OmittedWS
+            ws_cadence_valid = $CadenceOk
+            ws_min_tick_ms = $(if ([double]::IsPositiveInfinity($GapMin)) { $null } else { [int][Math]::Round($GapMin) })
+            ws_max_tick_ms = [int][Math]::Round($GapMax)
+            ws_avg_tick_ms = [int][Math]::Round($GapSum / 59)
+            ws_max_lag_ms = [int][Math]::Round($LagMax)
+            pending_commands = $script:ComandosPendentes
+            http = $HttpReport
+            d1_size_before = (Campo $BeforeInfo "database_size")
+            d1_size_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "database_size" })
+            d1_read_queries_24h_before = (Campo $BeforeInfo "read_queries_24h")
+            d1_read_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "read_queries_24h" })
+            d1_write_queries_24h_before = (Campo $BeforeInfo "write_queries_24h")
+            d1_write_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "write_queries_24h" })
+            d1_before = $Before
+            d1_outage = $Mid
+            d1_recovered = $Recovered
+            d1_final = $After
+        }
+        [System.IO.File]::WriteAllText($ReportFile, (($Report | ConvertTo-Json -Depth 8) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+        Write-Host ("Relatorio local sem credenciais: " + $ReportFile)
+        Write-Host "Consultas D1 24h sao metricas de janela movel, nao linhas faturaveis. DO Analytics requer painel."
+        foreach ($Path in @($OutputFile, $ErrorFile)) {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+        }
+    }
+} finally {
+    foreach ($Socket in $Connections.Values) {
+        if ($Socket -is [System.Net.WebSockets.ClientWebSocket]) { Fechar-Socket $Socket }
+    }
+    $ClientId = $null
+    $ClientSecret = $null
+    $PlainTokens = $null
+    $DeviceTokens = $null
+    Pop-Location
+}
+) {
+                    $HttpFailureSummary = $Line
+                }
+            }
+        }
+
+        # Even on sender failure, capture a final D1 snapshot when possible.
+        # These are SELECT and D1 info only, not new simulated traffic.
+        if ($RunStatus -cne "passed" -and $null -eq $After) {
+            try {
+                $After = @(Ler-Estados $FromUtc)
+                $AfterInfo = Obter-D1
+            } catch {
+                Write-Warning "Auditoria final somente leitura indisponivel; nao repetir ensaio."
+            }
+        }
+
+        if ($RunStatus -cne "passed") {
+            $HttpErrorLog = Join-Path $VaultDir ("lab-soak-" + $RunId + ".stderr.log")
+            $HttpOutputLog = Join-Path $VaultDir ("lab-soak-" + $RunId + ".stdout.log")
+            if (Test-Path -LiteralPath $ErrorFile -PathType Leaf) {
+                Move-Item -LiteralPath $ErrorFile -Destination $HttpErrorLog -ErrorAction Stop
+            } else { $HttpErrorLog = $null }
+            if (Test-Path -LiteralPath $OutputFile -PathType Leaf) {
+                Move-Item -LiteralPath $OutputFile -Destination $HttpOutputLog -ErrorAction Stop
+            } else { $HttpOutputLog = $null }
+        }
+
         $Report = [ordered]@{
             result = $RunStatus
             environment = "staging"
