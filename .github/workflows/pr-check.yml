@@ -77,8 +77,17 @@ jobs:
           $index = 'import "../src/index";'
           $notify = 'import { recordDeviceOnline, recordOfflineDevice } from "../src/notifications";'
           $simulator = 'import { labDeviceId, makeLabTelemetry } from "../scripts/maltworks-lab.mjs";'
+          $firstHelper = $header.IndexOf("async function transmit")
+          $secondHelper = $header.IndexOf("async function onlineCount")
+          $thirdHelper = $header.IndexOf("async function offlineActive")
+          if ($firstHelper -lt 0 -or $secondHelper -lt 0 -or $thirdHelper -lt 0) {
+            throw "Function anchors missing from test source"
+          }
           $cases = @(
             @{ label = "minimal"; content = $basic },
+            @{ label = "constants-only"; content = ($header.Substring(0, $firstHelper) + "`n" + $rest) },
+            @{ label = "transmit-helper-only"; content = ($header.Substring(0, $secondHelper) + "`n" + $rest) },
+            @{ label = "transmit-plus-online-count"; content = ($header.Substring(0, $thirdHelper) + "`n" + $rest) },
             @{ label = "cloudflare-import"; content = ($cf + "`n" + $basic) },
             @{ label = "index-import"; content = ($index + "`n" + $basic) },
             @{ label = "notifications-import"; content = ($notify + "`n" + $basic) },
