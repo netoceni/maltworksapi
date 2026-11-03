@@ -15,7 +15,7 @@ import {
 } from "./devices";
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
-import { runTelemetryRetention, shouldPruneTelemetry, scheduledJobGates } from "./retention";
+import { runTelemetryRetention, shouldPruneTelemetry, scheduledJobGates, type ScheduledJobGateVars } from "./retention";
 import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
 import { aggregatedDeviceHistory } from "./history-query";
 import { adminIntelligentHistoryHealth } from "./history-health";
@@ -94,7 +94,7 @@ export default {
     ctx.waitUntil((async () => {
       // Archive first. The isolated Lab may opt into retention independently
       // without running offline scans, notifications or other cron jobs.
-      const jobs = scheduledJobGates(env);
+      const jobs = scheduledJobGates(env as Env & ScheduledJobGateVars);
       if (shouldRollupHistory(controller.scheduledTime)) {
         try {
           await runIntelligentHistoryRollup(env, controller.scheduledTime);
