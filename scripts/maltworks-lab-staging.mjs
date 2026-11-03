@@ -85,7 +85,18 @@ export async function main(argv = process.argv.slice(2), environment = process.e
     tokens,
     accessClientId: environment.CF_ACCESS_CLIENT_ID,
     accessClientSecret: environment.CF_ACCESS_CLIENT_SECRET,
-  });
+  }, options.soakOutage ? {
+    onTick: ({ tick, totalTicks, delivered, omitted }) => {
+      if (tick === 1 || tick % 10 === 0 || tick === totalTicks) {
+        // Progress is written to stderr, leaving stdout as the single final
+        // machine-readable JSON report. Never include credentials in logs.
+        process.stderr.write(
+          "Maltworks Lab progress: tick=" + tick + "/" + totalTicks +
+          " delivered=" + delivered + " omitted=" + omitted + "\n",
+        );
+      }
+    },
+  } : {});
   process.stdout.write(JSON.stringify(result) + "\n");
   return result;
 }
