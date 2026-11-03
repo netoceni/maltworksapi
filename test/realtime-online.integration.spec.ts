@@ -105,8 +105,10 @@ describe("Realtime device recovery synchronizes D1 notifications", () => {
 
     // A new incident creates exactly one new recovery event even with
     // two simultaneous paths racing to acknowledge the same transition.
+    // Use a different last_seen_at from the first incident: notification
+    // event keys intentionally deduplicate identical offline episodes.
     await env.DB.prepare("UPDATE devices SET last_seen_at=?1 WHERE id=?2")
-      .bind(now - 120, DEVICE_ID).run();
+      .bind(now - 115, DEVICE_ID).run();
     expect(await recordOfflineDevice(env, DEVICE_ID, now + 1)).toHaveLength(1);
     expect(await offlineActive()).toBe(1);
     const raced = await Promise.all([
