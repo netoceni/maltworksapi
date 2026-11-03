@@ -91,7 +91,7 @@ export async function runLabStaging({
   startAt = Math.floor(Date.now() / 1000),
   sessionId = randomInt(0, 2048),
   accessClientId, accessClientSecret, soakOutage = false,
-}, { fetchImpl = fetch, sleep = delay, nowMs = () => performance.now() } = {}) {
+}, { fetchImpl = fetch, sleep = delay, nowMs = () => performance.now(), onTick = null } = {}) {
   const url = requireLabEndpoint(endpoint);
   if (!Number.isInteger(devices) || devices < 1 || devices > LAB_MAX_STAGING_DEVICES) {
     throw new Error("Remote staging supports 1-10 devices");
@@ -163,6 +163,7 @@ export async function runLabStaging({
     // until all in-flight requests settle before starting the next tick.
     // A rejected device stops the pilot without leaking its credentials.
     const requests = [];
+    const requestedDevices = [];
     for (let index = 0; index < devices; index++) {
       if (soakOutage && index === 0 && tick >= LAB_SOAK_OUTAGE_START_TICK &&
           tick <= LAB_SOAK_OUTAGE_END_TICK) {
@@ -187,6 +188,7 @@ export async function runLabStaging({
         headers["CF-Access-Client-Id"] = accessClientId;
         headers["CF-Access-Client-Secret"] = accessClientSecret;
       }
+      requestedDevices.push(deviceId);
       requests.push((async () => {
         let response;
         try {
@@ -216,11 +218,23 @@ export async function runLabStaging({
     }
     const outcomes = await Promise.allSettled(requests);
     let failure = null;
-    for (const outcome of outcomes) {
+    let failedDevice = null;
+    for (const [index, outcome] of outcomes.entries()) {
       if (outcome.status === "fulfilled") delivered++;
-      else if (!failure) failure = outcome.reason;
+      else if (!failure) {
+        failure = outcome.reason;
+        failedDevice = requestedDevices[index];
+      }
     }
-    if (failure) throw failure;
+    if (failure) {
+      // Only include lab device ID, tick and our own sanitized error message.
+      // Never expose tokens, Access headers, URLs, or a thrown fetch exception.
+      throw new Error(
+        "Lab staging HTTP batch failed at tick " + (tick + 1) + "/" + ticks +
+        ", device " + failedDevice + ": " + failure.message,
+      );
+    }
+    if (onTick) onTick({ tick: tick + 1, totalTicks: ticks, delivered, omitted });
   }
 
   return {
