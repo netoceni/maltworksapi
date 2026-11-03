@@ -235,7 +235,18 @@ export class RealtimeHub extends DurableObject<Env> {
     }
     if (attachment.role === "device" && attachment.deviceId && value.type === "heartbeat") {
       const now = epochSeconds();
-      await this.touchPresence(attachment.deviceId, now);
+      const recoveredPresence = await this.touchPresence(attachment.deviceId, now);
+      // Normally the connection already restored D1. If an open socket resumes
+      // after its 90-second deadline, reconcile only that state transition.
+      // No extra D1 queries or writes on normal 30-second heartbeats.
+      if (recoveredPresence) {
+        const restored = await recordDeviceOnline(this.env, attachment.deviceId, now);
+        this.broadcast({ type: "presence", deviceId: attachment.deviceId, status: "online", lastSeenAt: now });
+        if (restored.length) {
+          this.broadcast({ type: "notifications_changed", changedAt: now });
+          this.ctx.waitUntil(deliverNotificationEmails(this.env, restored));
+        }
+      }
       socket.send(JSON.stringify({ type: "heartbeat_ack", serverTime: now }));
     }
   }
@@ -275,7 +286,7 @@ export class RealtimeHub extends DurableObject<Env> {
     await this.scheduleNextAlarm();
   }
 
-  private async touchPresence(deviceId: string, lastSeenAt: number): Promise<void> {
+  private async touchPresence(deviceId: string, lastSeenAt: number): Promise<boolean> {
     // On the Free pilot the ESP sends HTTP telemetry and WebSocket heartbeats
     // every 30 seconds. Coalesce near-simultaneous updates to keep Durable
     // Object SQL writes and alarm rescheduling well below daily quotas.
@@ -284,8 +295,9 @@ export class RealtimeHub extends DurableObject<Env> {
       "FROM device_presence WHERE device_id = ?",
       deviceId,
     ).toArray()[0];
+    const recoveredPresence = !previous || previous.online !== 1 || previous.deadlineAt <= lastSeenAt;
     if (maySkipPresenceWrite(previous, lastSeenAt)) {
-      return;
+      return false;
     }
 
     const deadlineAt = lastSeenAt + OFFLINE_AFTER_SECONDS;
@@ -301,6 +313,7 @@ export class RealtimeHub extends DurableObject<Env> {
       deadlineAt,
     );
     await this.scheduleNextAlarm();
+    return recoveredPresence;
   }
 
   private async scheduleNextAlarm(): Promise<void> {
