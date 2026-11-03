@@ -73,8 +73,18 @@ jobs:
           $header = $source.Substring(0, $split)
           $basic = 'import { describe, it, expect } from "vitest"; describe("smoke", () => { it("ok", () => { expect(1).toBe(1); }); });'
           $rest = 'describe("smoke", () => { it("ok", () => { expect(1).toBe(1); }); });'
+          $cf = 'import { env, exports } from "cloudflare:workers";'
+          $index = 'import "../src/index";'
+          $notify = 'import { recordDeviceOnline, recordOfflineDevice } from "../src/notifications";'
+          $simulator = 'import { labDeviceId, makeLabTelemetry } from "../scripts/maltworks-lab.mjs";'
           $cases = @(
             @{ label = "minimal"; content = $basic },
+            @{ label = "cloudflare-import"; content = ($cf + "`n" + $basic) },
+            @{ label = "index-import"; content = ($index + "`n" + $basic) },
+            @{ label = "notifications-import"; content = ($notify + "`n" + $basic) },
+            @{ label = "simulator-import"; content = ($simulator + "`n" + $basic) },
+            @{ label = "index-and-notifications"; content = ($index + "`n" + $notify + "`n" + $basic) },
+            @{ label = "all-imports"; content = ($cf + "`n" + $index + "`n" + $notify + "`n" + $simulator + "`n" + $basic) },
             @{ label = "imports-and-helpers"; content = ($header + "`n" + $rest) },
             @{ label = "original-copy"; content = $source }
           )
