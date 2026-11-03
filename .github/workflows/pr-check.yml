@@ -63,3 +63,28 @@ jobs:
           node --check scripts/maltworks-lab.mjs
       - name: Run only WebSocket regression suite
         run: npm run test:realtime
+      - name: Diagnose module-load failure with temporary minimal probes
+        if: failure()
+        shell: pwsh
+        run: |
+          $source = Get-Content -LiteralPath "test/realtime-online.integration.spec.ts" -Raw
+          $split = $source.IndexOf('describe("Realtime device recovery')
+          if ($split -lt 0) { throw "Source anchor not found" }
+          $header = $source.Substring(0, $split)
+          $basic = 'import { describe, it, expect } from "vitest"; describe("smoke", () => { it("ok", () => { expect(1).toBe(1); }); });'
+          $rest = 'describe("smoke", () => { it("ok", () => { expect(1).toBe(1); }); });'
+          $cases = @(
+            @{ label = "minimal"; content = $basic },
+            @{ label = "imports-and-helpers"; content = ($header + "`n" + $rest) },
+            @{ label = "original-copy"; content = $source }
+          )
+          foreach ($case in $cases) {
+            Write-Host ("DIAGNOSTIC CASE: " + $case.label)
+            [System.IO.File]::WriteAllText(
+              (Join-Path (Get-Location) "test/ws-probe.integration.spec.ts"),
+              $case.content,
+              [System.Text.UTF8Encoding]::new($false)
+            )
+            & npx.cmd vitest run test/ws-probe.integration.spec.ts --maxWorkers=1 --no-isolate
+            Write-Host ("DIAGNOSTIC RESULT: " + $case.label + " exit=" + $LASTEXITCODE)
+          }
