@@ -448,7 +448,7 @@ try {
         $After = @(Ler-Estados $FromUtc)
         $AfterInfo = Obter-D1
         for ($i = 0; $i -lt 10; $i++) {
-            # Selective D1 persistence may leave final sequence below 60.
+            # Selective D1 persistence can leave final sequence below 60.
             if ([int]$After[$i].offline -ne 0 -or
                 [int]$After[$i].seq -le 0 -or [int]$After[$i].raw_samples -le 0) {
                 throw "Estado D1 final offline ou sem snapshot deste ensaio."
@@ -480,7 +480,9 @@ try {
         if (Test-Path -LiteralPath $ErrorFile -PathType Leaf) {
             $Lines = @(Get-Content -LiteralPath $ErrorFile -ErrorAction SilentlyContinue)
             foreach ($Line in $Lines) {
-                if ($Line -match '^Maltworks Lab start: tick=[0-9]{1,2}/60
+                if ($Line -match '^Maltworks Lab start: tick=[0-9]{1,2}/60$') {
+                    $HttpLastStarted = $Line
+                }
                 if ($Line -match '^Maltworks Lab progress: tick=[0-9]{1,2}/60 delivered=[0-9]{1,3} omitted=[0-5]$') {
                     $HttpLastProgress = $Line
                 }
@@ -553,98 +555,6 @@ try {
         if ($RunStatus -cne "passed") {
             Write-Host ("Emissor HTTP, codigo de saida: " + $HttpExitCode)
             if ($HttpLastStarted) { Write-Host $HttpLastStarted }
-            if ($HttpLastProgress) { Write-Host $HttpLastProgress }
-            if ($HttpFailureSummary) { Write-Host $HttpFailureSummary }
-            Write-Host "Logs locais preservados (nao compartilhe logs brutos sem revisar)."
-        }
-        Write-Host "Consultas D1 24h sao metricas de janela movel, nao linhas faturaveis. DO Analytics requer painel."
-        foreach ($Path in @($OutputFile, $ErrorFile)) {
-            Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-        }
-    }
-} finally {
-    foreach ($Socket in $Connections.Values) {
-        if ($Socket -is [System.Net.WebSockets.ClientWebSocket]) { Fechar-Socket $Socket }
-    }
-    $ClientId = $null
-    $ClientSecret = $null
-    $PlainTokens = $null
-    $DeviceTokens = $null
-    Pop-Location
-}
-) {
-                    $HttpLastStarted = $Line
-                }
-                if ($Line -match '^Maltworks Lab progress: tick=[0-9]{1,2}/60 delivered=[0-9]{1,3} omitted=[0-5]$') {
-                    $HttpLastProgress = $Line
-                }
-                if ($Line -match '^Maltworks Lab: Lab staging HTTP batch failed at tick [0-9]{1,2}/60, device MW-C[0-9]{11}: (Lab staging request failed or was redirected; stopping safely|Staging telemetry rejected [(]HTTP [1-5][0-9]{2}[)]|Staging device is pending; claim it in the staging organization first|Lab staging did not confirm an active test device)$') {
-                    $HttpFailureSummary = $Line
-                }
-            }
-        }
-
-        # Attempt a final read-only D1 audit on a failed run as well.
-        if ($RunStatus -cne "passed" -and $null -eq $After) {
-            try {
-                $After = @(Ler-Estados $FromUtc)
-                $AfterInfo = Obter-D1
-            } catch {
-                Write-Warning "Auditoria final D1 indisponivel. Nao repetir o ensaio."
-            }
-        }
-
-        # Preserve child process logs under the Windows user profile on failure.
-        # Raw logs remain LOCAL and MUST NOT be uploaded/shared before review.
-        if ($RunStatus -cne "passed") {
-            if (Test-Path -LiteralPath $ErrorFile -PathType Leaf) {
-                $HttpErrorLog = Join-Path $VaultDir ("lab-soak-" + $RunId + ".stderr.log")
-                Move-Item -LiteralPath $ErrorFile -Destination $HttpErrorLog -ErrorAction Stop
-            }
-            if (Test-Path -LiteralPath $OutputFile -PathType Leaf) {
-                $HttpOutputLog = Join-Path $VaultDir ("lab-soak-" + $RunId + ".stdout.log")
-                Move-Item -LiteralPath $OutputFile -Destination $HttpOutputLog -ErrorAction Stop
-            }
-        }
-
-        $Report = [ordered]@{
-            result = $RunStatus
-            environment = "staging"
-            started_at_utc = $Start.ToString("o")
-            finished_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
-            controllers = 10
-            ticks = 60
-            outage_device = "MW-C00000000000"
-            outage_ticks = "30..34"
-            ws_acks = $AckCount
-            ws_omitted = $OmittedWS
-            ws_cadence_valid = $CadenceOk
-            ws_min_tick_ms = $(if ([double]::IsPositiveInfinity($GapMin)) { $null } else { [int][Math]::Round($GapMin) })
-            ws_max_tick_ms = [int][Math]::Round($GapMax)
-            ws_avg_tick_ms = [int][Math]::Round($GapSum / 59)
-            ws_max_lag_ms = [int][Math]::Round($LagMax)
-            pending_commands = $script:ComandosPendentes
-            http = $HttpReport
-            http_exit_code = $HttpExitCode
-            http_last_progress = $HttpLastProgress
-            http_failure_summary = $HttpFailureSummary
-            http_stderr_log_local = $HttpErrorLog
-            http_stdout_log_local = $HttpOutputLog
-            d1_size_before = (Campo $BeforeInfo "database_size")
-            d1_size_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "database_size" })
-            d1_read_queries_24h_before = (Campo $BeforeInfo "read_queries_24h")
-            d1_read_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "read_queries_24h" })
-            d1_write_queries_24h_before = (Campo $BeforeInfo "write_queries_24h")
-            d1_write_queries_24h_after = $(if ($null -eq $AfterInfo) { $null } else { Campo $AfterInfo "write_queries_24h" })
-            d1_before = $Before
-            d1_outage = $Mid
-            d1_recovered = $Recovered
-            d1_final = $After
-        }
-        [System.IO.File]::WriteAllText($ReportFile, (($Report | ConvertTo-Json -Depth 8) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
-        Write-Host ("Relatorio local sem credenciais: " + $ReportFile)
-        if ($RunStatus -cne "passed") {
-            Write-Host ("Emissor HTTP, codigo de saida: " + $HttpExitCode)
             if ($HttpLastProgress) { Write-Host $HttpLastProgress }
             if ($HttpFailureSummary) { Write-Host $HttpFailureSummary }
             Write-Host "Logs locais preservados (nao compartilhe logs brutos sem revisar)."
