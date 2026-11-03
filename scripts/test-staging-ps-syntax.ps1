@@ -175,4 +175,15 @@ if ($WebSocketPilot -match '(?i)wss?://(api|app|admin)\.maltworks\.com\.br/' -or
     $WebSocketPilot -match '(?i)wrangler\s+(deploy|d1\s+(delete|execute|migrations))') {
     throw "WebSocket Lab contem acesso proibido a producao ou mutacao D1."
 }
+# PowerShell can emit internal VoidTaskResult from awaited .NET tasks into the
+# function success stream. Never let async task artifacts mix with WS handles.
+foreach ($Required in @(
+    '$null = $Socket.ConnectAsync(',
+    '$null = $Socket.SendAsync(',
+    '$null = $Socket.CloseAsync('
+)) {
+    if (-not $WebSocketPilot.Contains($Required)) {
+        throw ("WebSocket task output guard missing: " + $Required)
+    }
+}
 Write-Host "PowerShell staging: verificacao estatica concluida." -ForegroundColor Green
