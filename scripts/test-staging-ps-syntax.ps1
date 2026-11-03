@@ -6,7 +6,8 @@ $Files = @(
     (Join-Path $PSScriptRoot "02-testar-staging.ps1"),
     (Join-Path $PSScriptRoot "03-configurar-access.ps1"),
     (Join-Path $PSScriptRoot "04-credencial-access-lab.ps1"),
-    (Join-Path $PSScriptRoot "06-websocket-lab.ps1")
+    (Join-Path $PSScriptRoot "06-websocket-lab.ps1"),
+    (Join-Path $PSScriptRoot "07-estabilidade-integrada-lab.ps1")
 )
 foreach ($File in $Files) {
     $Tokens = $null
@@ -187,3 +188,35 @@ foreach ($Required in @(
     }
 }
 Write-Host "PowerShell staging: verificacao estatica concluida." -ForegroundColor Green
+
+# Integrated endurance test: parser, staging identity, credential safety and no DML.
+$Soak = Get-Content -LiteralPath $Files[5] -Raw
+foreach ($Required in @(
+    "Executar30Min",
+    "EXECUTAR 30MIN WS HTTP LAB",
+    "api-staging.maltworks.com.br",
+    "maltworks-lab-staging",
+    "LAB_STAGING_ROLLUP_ONLY",
+    "CF-Access-Client-Secret",
+    "lab-staging-ten-tokens.dpapi",
+    "--soak-outage",
+    "Start-Process",
+    "heartbeat_ack",
+    "Ler-Estados",
+    "--json --command",
+    "Offline",
+    "595"
+)) {
+    if (-not $Soak.Contains($Required)) {
+        throw ("Integrated soak protection missing: " + $Required)
+    }
+}
+if ($Soak -match '(?i)wss?://(api|app|admin)\.maltworks\.com\.br/' -or
+    $Soak -match '(?i)https?://(api|app|admin)\.maltworks\.com\.br/' -or
+    $Soak -match '(?i)wrangler\s+(deploy|d1\s+(delete|migrations))') {
+    throw "Integrated soak must never access production or mutate Cloudflare resources."
+}
+if ($Soak -match '(?i)\b(DROP\s+TABLE|DELETE\s+FROM|UPDATE\s+notification_states|INSERT\s+INTO)\b') {
+    throw "Integrated soak must perform no direct D1 writes."
+}
+Write-Host "Integrated Maltworks Lab: staging and syntax safeguards approved." -ForegroundColor Green
