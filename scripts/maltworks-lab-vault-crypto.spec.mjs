@@ -36,7 +36,15 @@ test("incorrect password, modified tag or modified ciphertext never decrypts", (
   assert.throws(() => unseal(password, { ...sealed, kdf: "none" }));
 });
 
-test("weak or unsupported passphrases are rejected before encryption", () => {
+test("8-character transfer passwords work and shorter passwords are rejected", () => {
+  const shortPassword = "Ab7#q9X!";
+  const envelope = seal(shortPassword, sample);
+  assert.deepEqual(unseal(shortPassword, envelope), sample);
+  assert.throws(() => unseal("Wrong123", envelope));
+  assert.throws(() => seal("Ab7#q9X", sample));
+});
+
+test("unsupported passphrases are rejected before encryption", () => {
   assert.throws(() => seal("short", sample));
   assert.throws(() => seal("Password With Spaces 2026", sample));
   assert.throws(() => seal("example-passphrase-com-acento-ação", sample));
