@@ -86,6 +86,11 @@ export async function main(argv = process.argv.slice(2), environment = process.e
     accessClientId: environment.CF_ACCESS_CLIENT_ID,
     accessClientSecret: environment.CF_ACCESS_CLIENT_SECRET,
   }, options.soakOutage ? {
+    onTickStart: ({ tick, totalTicks }) => {
+      if (tick === 1 || tick % 10 === 0 || tick === totalTicks) {
+        process.stderr.write("Maltworks Lab start: tick=" + tick + "/" + totalTicks + "\n");
+      }
+    },
     onTick: ({ tick, totalTicks, delivered, omitted }) => {
       if (tick === 1 || tick % 10 === 0 || tick === totalTicks) {
         // Progress is written to stderr, leaving stdout as the single final
