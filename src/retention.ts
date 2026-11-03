@@ -6,6 +6,37 @@ import { completedHistoryWatermark } from "./history-rollup";
  * and audit events are not touched by the cleanup job.
  */
 export const DEFAULT_TELEMETRY_RETENTION_DAYS = 7;
+
+/**
+ * Isolated Lab staging runs rollups by default. Retention may be independently
+ * enabled only with explicit 7/90/365-day windows. The other cron jobs
+ * (offline scans, notifications, daily monitoring) remain disabled in the Lab.
+ * When the Lab flag is absent, preserve the existing production behavior.
+ */
+export interface ScheduledJobGateVars {
+  LAB_STAGING_ROLLUP_ONLY?: string;
+  LAB_STAGING_ENABLE_RETENTION?: string;
+  TELEMETRY_RETENTION_DAYS?: string;
+  HISTORY_5MIN_RETENTION_DAYS?: string;
+  HISTORY_HOURLY_RETENTION_DAYS?: string;
+}
+
+export function scheduledJobGates(vars: ScheduledJobGateVars): {
+  retention: boolean; maintenance: boolean;
+} {
+  if (vars.LAB_STAGING_ROLLUP_ONLY !== "true") {
+    return { retention: true, maintenance: true };
+  }
+  if (vars.LAB_STAGING_ENABLE_RETENTION !== "true") {
+    return { retention: false, maintenance: false };
+  }
+  if (vars.TELEMETRY_RETENTION_DAYS !== "7" ||
+      vars.HISTORY_5MIN_RETENTION_DAYS !== "90" ||
+      vars.HISTORY_HOURLY_RETENTION_DAYS !== "365") {
+    throw new Error("Lab staging retention requires exact windows 7/90/365.");
+  }
+  return { retention: true, maintenance: false };
+}
 // Provides 57,600 raw-delete capacity/day, allowing headroom above
 // 25 devices x 1 minute (36,000) plus safety-event snapshots.
 // Requires Workers/D1 Paid before operating a 25-device fleet.

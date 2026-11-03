@@ -88,3 +88,26 @@ test("staging config rejects production email, R2, cron and dangerous routes", (
   allowed.routes = [{ pattern: "api-staging.maltworks.com.br/*", zone_name: "maltworks.com.br" }];
   assert.equal(validateLabStageConfig(allowed).routesConfigured, true);
 });
+
+test("staging retention remains off unless explicitly enabled with safe windows", () => {
+  const cfg = stageConfig();
+  assert.equal(validateLabStageConfig(cfg).retentionEnabled, false);
+  cfg.vars.LAB_STAGING_ENABLE_RETENTION = "false";
+  assert.equal(validateLabStageConfig(cfg).retentionEnabled, false);
+
+  cfg.vars.LAB_STAGING_ENABLE_RETENTION = "true";
+  assert.throws(() => validateLabStageConfig(cfg));
+  cfg.vars.TELEMETRY_RETENTION_DAYS = "7";
+  cfg.vars.HISTORY_5MIN_RETENTION_DAYS = "90";
+  cfg.vars.HISTORY_HOURLY_RETENTION_DAYS = "365";
+  assert.equal(validateLabStageConfig(cfg).retentionEnabled, true);
+
+  cfg.vars.LAB_STAGING_ROLLUP_ONLY = "false";
+  assert.throws(() => validateLabStageConfig(cfg));
+  cfg.vars.LAB_STAGING_ROLLUP_ONLY = "true";
+  cfg.vars.HISTORY_HOURLY_RETENTION_DAYS = "90";
+  assert.throws(() => validateLabStageConfig(cfg));
+  cfg.vars.HISTORY_HOURLY_RETENTION_DAYS = "365";
+  cfg.vars.LAB_STAGING_ENABLE_RETENTION = "TRUE";
+  assert.throws(() => validateLabStageConfig(cfg));
+});

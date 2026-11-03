@@ -41,16 +41,20 @@ jobs:
           python3 -c "import json; p=json.load(open('/tmp/maltworks-history-simulation.json')); s=p['scenarios']; assert len(s)==3; f=next(x for x in s if x['devices']==10); assert f['raw_backlog_growth_day']==0; assert f['http_requests_day']<=80000; assert f['do_total_requests_day']<=80000; assert f['d1_daily_writes_heuristic_estimate']<=80000; assert f['steady_db_mb_projection']<=400"
 
   windows-websocket:
-    name: Windows WebSocket regression
+    name: Windows Lab and WebSocket regression (Node ${{ matrix.node }})
     runs-on: windows-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -59,7 +63,12 @@ jobs:
         run: |
           node --version
           npm --version
+          # Exercise the imported CLI with Windows autocrlf, respecting .gitattributes.
+          git -c core.autocrlf=true checkout-index --force scripts/maltworks-lab.mjs
+          git ls-files --eol scripts/maltworks-lab.mjs
           git hash-object test/realtime-online.integration.spec.ts
           node --check scripts/maltworks-lab.mjs
-      - name: Run only WebSocket regression suite
-        run: npm run test:realtime
+      - name: Run all Worker tests, including Lab contract and WebSocket regressions
+        run: npm test
+      - name: Test internal Maltworks Lab and staging security gates
+        run: node --test scripts/maltworks-lab*.spec.mjs

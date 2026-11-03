@@ -6,6 +6,7 @@ import {
   runTelemetryRetention,
   shouldPruneTelemetry,
   telemetryRetentionDays,
+  scheduledJobGates,
 } from "../src/retention";
 
 describe("raw telemetry retention", () => {
@@ -117,5 +118,41 @@ describe("raw telemetry retention", () => {
       warn.mockRestore();
       info.mockRestore();
     }
+  });
+});
+
+describe("cron isolation policy for Lab staging", () => {
+  it("preserves production cron behavior without the staging flag", () => {
+    expect(scheduledJobGates({})).toEqual({
+      retention: true, maintenance: true,
+    });
+    expect(scheduledJobGates({ TELEMETRY_RETENTION_DAYS: "7" })).toEqual({
+      retention: true, maintenance: true,
+    });
+  });
+
+  it("keeps both cleanup and maintenance disabled in rollup-only Lab by default", () => {
+    expect(scheduledJobGates({
+      LAB_STAGING_ROLLUP_ONLY: "true",
+      TELEMETRY_RETENTION_DAYS: "0",
+      HISTORY_5MIN_RETENTION_DAYS: "0",
+      HISTORY_HOURLY_RETENTION_DAYS: "0",
+    })).toEqual({ retention: false, maintenance: false });
+  });
+
+  it("enables only retention under exact 7/90/365 staging windows", () => {
+    const staged = {
+      LAB_STAGING_ROLLUP_ONLY: "true",
+      LAB_STAGING_ENABLE_RETENTION: "true",
+      TELEMETRY_RETENTION_DAYS: "7",
+      HISTORY_5MIN_RETENTION_DAYS: "90",
+      HISTORY_HOURLY_RETENTION_DAYS: "365",
+    };
+    expect(scheduledJobGates(staged)).toEqual({
+      retention: true, maintenance: false,
+    });
+    expect(() => scheduledJobGates({ ...staged, TELEMETRY_RETENTION_DAYS: "0" })).toThrow();
+    expect(() => scheduledJobGates({ ...staged, HISTORY_5MIN_RETENTION_DAYS: "0" })).toThrow();
+    expect(() => scheduledJobGates({ ...staged, HISTORY_HOURLY_RETENTION_DAYS: "0" })).toThrow();
   });
 });
