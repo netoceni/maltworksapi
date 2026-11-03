@@ -74,7 +74,7 @@ function Aguardar-Evento(
         $Event = Receber-Evento $Socket
         if ($Event.type -ceq $Tipo) { return $Event }
         if ($Event.type -ceq "command") {
-            $script:ComandosPendentes++
+            [void]($script:ComandosPendentes++)
             continue
         }
         throw ("Evento inesperado no WebSocket: " + [string]$Event.type)
@@ -128,7 +128,8 @@ function Abrir-Dispositivo(
             [int]$Ready.offlineAfterSeconds -ne 90) {
             throw "Resposta ready nao corresponde ao protocolo esperado."
         }
-        return $Socket
+        # Suppress any incidental pipeline output: return exactly one handle.
+        Write-Output -NoEnumerate -InputObject $Socket
     } catch {
         $Socket.Dispose()
         throw ("Falha no upgrade WebSocket/autenticacao de " + $DeviceId + ". Sem envio de telemetria.")
@@ -158,7 +159,7 @@ function Fechar-Socket([System.Net.WebSockets.ClientWebSocket] $Socket) {
 }
 
 Push-Location $Root
-$Connections = @{}
+$Connections = [System.Collections.Generic.Dictionary[string,System.Net.WebSockets.ClientWebSocket]]::new()
 $DeviceTokens = $null
 $PlainTokens = $null
 $ClientId = $null
@@ -253,14 +254,29 @@ try {
     }
 
     foreach ($Id in $DeviceTokens.Keys) {
-        $Connections[$Id] = Abrir-Dispositivo $Id $DeviceTokens[$Id] $ClientId $ClientSecret
+        $Opened = @(Abrir-Dispositivo $Id $DeviceTokens[$Id] $ClientId $ClientSecret)
+        if ($Opened.Count -ne 1 -or
+            $Opened[0] -isnot [System.Net.WebSockets.ClientWebSocket]) {
+            # No secret values or headers in diagnostic output.
+            $Types = (@($Opened | ForEach-Object {
+                if ($null -eq $_) { "null" } else { $_.GetType().Name }
+            })) -join ","
+            foreach ($Value in $Opened) {
+                if ($Value -is [System.Net.WebSockets.ClientWebSocket]) {
+                    Fechar-Socket $Value
+                }
+            }
+            throw ("Abertura retornou formato inesperado de " + $Id +
+                ": quantidade=" + $Opened.Count + "; tipos=" + $Types)
+        }
+        $Connections.Add($Id, [System.Net.WebSockets.ClientWebSocket]$Opened[0])
     }
     $PlainTokens = $null
     $Tokens = $null
     $DeviceTokens = $null
 
     if ($Etapa -ceq "TestarUm") {
-        $Socket = $Connections["MW-C00000000000"]
+        [System.Net.WebSockets.ClientWebSocket]$Socket = $Connections["MW-C00000000000"]
         Enviar-Evento $Socket '{"type":"ping"}'
         $Pong = Aguardar-Evento $Socket "pong"
         Enviar-Evento $Socket '{"type":"heartbeat"}'
@@ -329,7 +345,9 @@ try {
 
 } finally {
     foreach ($Socket in $Connections.Values) {
-        Fechar-Socket $Socket
+        if ($Socket -is [System.Net.WebSockets.ClientWebSocket]) {
+            Fechar-Socket $Socket
+        }
     }
     $ClientId = $null
     $ClientSecret = $null
