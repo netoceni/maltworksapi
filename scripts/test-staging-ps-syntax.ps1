@@ -5,7 +5,8 @@ $Files = @(
     (Join-Path $PSScriptRoot "01-provisionar-staging.ps1"),
     (Join-Path $PSScriptRoot "02-testar-staging.ps1"),
     (Join-Path $PSScriptRoot "03-configurar-access.ps1"),
-    (Join-Path $PSScriptRoot "04-credencial-access-lab.ps1")
+    (Join-Path $PSScriptRoot "04-credencial-access-lab.ps1"),
+    (Join-Path $PSScriptRoot "06-websocket-lab.ps1")
 )
 foreach ($File in $Files) {
     $Tokens = $null
@@ -149,5 +150,29 @@ if ($LocalCredentials -notmatch '(?s)\$Confirm\s+-cne\s+\$ConfirmationText') {
 }
 if ($LocalCredentials -match '(?i)wrangler\s+(deploy|d1\s+(delete|execute|migrations))') {
     throw "Local credential script must not deploy or alter a D1."
+}
+# A new staging-only WebSocket pilot must never allow production connections,
+# transmit user credentials in its output, or run remote D1 mutations.
+$WebSocketPilot = Get-Content -LiteralPath $Files[4] -Raw
+foreach ($Required in @(
+    "wss://api-staging.maltworks.com.br/v1/device/realtime",
+    "lab-staging-ten-tokens.dpapi",
+    "lab-access-client.dpapi.json",
+    "LAB_STAGING_ROLLUP_ONLY",
+    "TestarUm",
+    "TestarDez",
+    "ABRIR 1 WS LAB",
+    "ABRIR 10 WS LAB",
+    "heartbeat_ack",
+    "SetRequestHeader",
+    "CloseAsync"
+)) {
+    if (-not $WebSocketPilot.Contains($Required)) {
+        throw ("WebSocket Lab guarda ausente: " + $Required)
+    }
+}
+if ($WebSocketPilot -match '(?i)wss?://(api|app|admin)\.maltworks\.com\.br/' -or
+    $WebSocketPilot -match '(?i)wrangler\s+(deploy|d1\s+(delete|execute|migrations))') {
+    throw "WebSocket Lab contem acesso proibido a producao ou mutacao D1."
 }
 Write-Host "PowerShell staging: verificacao estatica concluida." -ForegroundColor Green
