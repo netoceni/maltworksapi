@@ -70,6 +70,14 @@ describe("Maltworks Lab uses the genuine API contract in isolated D1", () => {
     expect(state?.samples).toBeLessThan(10);
     expect(state?.alarms).toBeGreaterThanOrEqual(1);
 
+    // A response can be lost after the server commits. Retrying the identical
+    // boot/sequence must acknowledge it without duplicating persisted samples.
+    expect((await ingest(9)).status).toBe(200);
+    expect((await ingest(9)).status).toBe(200);
+    const afterRetry = await env.DB.prepare(
+      "SELECT COUNT(*) AS samples, SUM(alarms_active) AS alarms FROM telemetry WHERE device_id = ?1",
+    ).bind(DEVICE_ID).first<{ samples: number; alarms: number }>();
+    expect(afterRetry).toEqual(state);
     const latest = await exports.default.fetch(base + "/v1/devices/" + DEVICE_ID + "/latest", {
       headers: { Cookie: cookie },
     });
