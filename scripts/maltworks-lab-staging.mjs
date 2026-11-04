@@ -86,6 +86,12 @@ export async function main(argv = process.argv.slice(2), environment = process.e
     accessClientId: environment.CF_ACCESS_CLIENT_ID,
     accessClientSecret: environment.CF_ACCESS_CLIENT_SECRET,
   }, options.soakOutage ? {
+    onRetry: ({ tick, totalTicks, deviceId, attempt, reason }) => {
+      process.stderr.write(
+        "Maltworks Lab retry: tick=" + tick + "/" + totalTicks +
+        " device=" + deviceId + " attempt=" + attempt + "/2 reason=" + reason + "\n",
+      );
+    },
     onTickStart: ({ tick, totalTicks }) => {
       if (tick === 1 || tick % 10 === 0 || tick === totalTicks) {
         process.stderr.write("Maltworks Lab start: tick=" + tick + "/" + totalTicks + "\n");

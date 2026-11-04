@@ -143,11 +143,14 @@ function Fechar-Socket([System.Net.WebSockets.ClientWebSocket] $Socket) {
         if ($Socket.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
             $Cancel = [System.Threading.CancellationTokenSource]::new(3000)
             try {
-                $null = $Socket.CloseAsync(
+                $Closing = $Socket.CloseOutputAsync(
                     [System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure,
                     "Lab test complete",
                     $Cancel.Token
-                ).GetAwaiter().GetResult()
+                )
+                # A peer that does not finish its close handshake must never
+                # prevent the report/error from reaching the caller.
+                if ($Closing.Wait(1000)) { $null = $Closing.GetAwaiter().GetResult() }
             } finally {
                 $Cancel.Dispose()
             }
@@ -155,6 +158,7 @@ function Fechar-Socket([System.Net.WebSockets.ClientWebSocket] $Socket) {
     } catch {
         # Always dispose, including if the close handshake timed out.
     } finally {
+        $Socket.Abort()
         $Socket.Dispose()
     }
 }
@@ -308,6 +312,8 @@ try {
     $HttpLastProgress = $null
     $HttpLastStarted = $null
     $HttpFailureSummary = $null
+    $HttpLastRetry = $null
+    $FailureType = $null
     $HttpErrorLog = $null
     $HttpOutputLog = $null
     $Process = $null
@@ -353,7 +359,7 @@ try {
                 "--pace-ms", "30000", "--soak-outage"
             )
             $NodePath = (Get-Command node -ErrorAction Stop).Source
-            $Process = Start-Process -FilePath $NodePath -ArgumentList $NodeArgs -WorkingDirectory $Root -RedirectStandardOutput $OutputFile -RedirectStandardError $ErrorFile -PassThru -NoNewWindow
+            $Process = Start-Process -FilePath $NodePath -ArgumentList $NodeArgs -WorkingDirectory $Root -RedirectStandardOutput $OutputFile -RedirectStandardError $ErrorFile -PassThru -WindowStyle Hidden
             if ($null -eq $Process -or $Process.Id -le 0) { throw "Emissor HTTP nao iniciou." }
         } finally {
             foreach ($Name in $Names) {
@@ -428,7 +434,7 @@ try {
             }
         }
 
-        if (-not $Process.WaitForExit(20000)) { throw "HTTP nao concluiu; nao repetir sem auditoria." }
+        if (-not $Process.WaitForExit(25000)) { throw "HTTP nao concluiu; nao repetir sem auditoria." }
         $HttpExitCode = $Process.ExitCode
         if ($HttpExitCode -ne 0) {
             throw ("Emissor HTTP falhou (codigo " + $HttpExitCode + "); nao repetir sem auditoria.")
@@ -461,6 +467,7 @@ try {
         $RunStatus = "passed"
         Write-Host "Estabilidade 30min aprovada: 595 HTTP, 595 WS, um offline e uma recuperacao." -ForegroundColor Green
     } catch {
+        $FailureType = $_.Exception.GetType().Name
         Write-Warning "Execucao pode ter produzido dados parciais: NAO repetir automaticamente."
         throw
     } finally {
@@ -485,6 +492,9 @@ try {
                 }
                 if ($Line -match '^Maltworks Lab progress: tick=[0-9]{1,2}/60 delivered=[0-9]{1,3} omitted=[0-5]$') {
                     $HttpLastProgress = $Line
+                }
+                if ($Line -match '^Maltworks Lab retry: tick=[0-9]{1,2}/60 device=MW-C[0-9]{11} attempt=2/2 reason=(timeout|network-(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_SOCKET))$') {
+                    $HttpLastRetry = $Line
                 }
                 if ($Line -match '^Maltworks Lab: Lab staging HTTP batch failed at tick [0-9]{1,2}/60, device MW-C[0-9]{11}: (Lab staging request failed [(](timeout|aborted|network-or-redirect|network-(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_SOCKET))[)]; stopping safely|Staging telemetry rejected [(]HTTP [1-5][0-9]{2}[)]|Staging device is pending; claim it in the staging organization first|Lab staging did not confirm an active test device)$') {
                     $HttpFailureSummary = $Line
@@ -517,6 +527,7 @@ try {
 
         $Report = [ordered]@{
             result = $RunStatus
+            failure_type = $FailureType
             environment = "staging"
             started_at_utc = $Start.ToString("o")
             finished_at_utc = [DateTimeOffset]::UtcNow.ToString("o")
@@ -537,6 +548,7 @@ try {
             http_last_progress = $HttpLastProgress
             http_last_started = $HttpLastStarted
             http_failure_summary = $HttpFailureSummary
+            http_last_retry = $HttpLastRetry
             http_stderr_log_local = $HttpErrorLog
             http_stdout_log_local = $HttpOutputLog
             d1_size_before = (Campo $BeforeInfo "database_size")

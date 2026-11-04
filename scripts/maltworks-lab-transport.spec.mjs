@@ -325,6 +325,53 @@ test("final HTTP tick timeout preserves safe device/tick diagnostics", async () 
   assert.deepEqual(completed, [1, 2]);
 });
 
+test("one transient timeout retransmits the identical frame and reports recovery within cadence", async () => {
+  let clock = 0;
+  const sent = [];
+  const retries = [];
+  const result = await runLabStaging({
+    endpoint: local, tokens: tokens(1), devices: 1, ticks: 3, paceMs: 30_000,
+  }, {
+    fetchImpl: async (_url, options) => {
+      sent.push(options.body);
+      if (sent.length === 1) {
+        clock += 10_000;
+        const error = new Error("never expose " + TOKEN);
+        error.name = "TimeoutError";
+        throw error;
+      }
+      return accepted();
+    },
+    nowMs: () => clock,
+    sleep: async (ms) => { clock += ms; },
+    onRetry: (retry) => retries.push(retry),
+  });
+  assert.equal(sent[0], sent[1]);
+  assert.equal(sent.length, 4);
+  assert.equal(result.delivered, 3);
+  assert.equal(result.retryAttempts, 1);
+  assert.equal(result.recoveredRequests, 1);
+  assert.equal(result.timingValid, true);
+  assert.equal(result.averageTickIntervalMs, 30_000);
+  assert.deepEqual(retries, [{ tick: 1, totalTicks: 3, deviceId: labDeviceId(0), attempt: 2, reason: "timeout" }]);
+});
+
+test("persistent network failure stops after two attempts without logging credentials", async () => {
+  let calls = 0;
+  await assert.rejects(runLabStaging({
+    endpoint: local, tokens: tokens(1), devices: 1, ticks: 3, paceMs: 30_000,
+  }, {
+    fetchImpl: async () => {
+      calls++;
+      const error = new Error(TOKEN);
+      error.cause = { code: "ECONNRESET" };
+      throw error;
+    },
+    sleep: async () => {},
+  }), (error) => /network-ECONNRESET/u.test(error.message) && !error.message.includes(TOKEN));
+  assert.equal(calls, 2);
+});
+
 test("network diagnostics use allowlisted error codes without leaking raw errors", async () => {
   await assert.rejects(
     runLabStaging({

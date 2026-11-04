@@ -106,7 +106,7 @@ export async function runLabStaging({
   accessClientId, accessClientSecret, soakOutage = false,
 }, {
   fetchImpl = fetch, sleep = delay, nowMs = () => performance.now(),
-  onTick = null, onTickStart = null,
+  onTick = null, onTickStart = null, onRetry = null,
 } = {}) {
   const url = requireLabEndpoint(endpoint);
   if (!Number.isInteger(devices) || devices < 1 || devices > LAB_MAX_STAGING_DEVICES) {
@@ -141,6 +141,8 @@ export async function runLabStaging({
   }
   let delivered = 0;
   let omitted = 0;
+  let retryAttempts = 0;
+  let recoveredRequests = 0;
 
   // Use absolute, monotonic deadlines: HTTP time must not be added to the
   // configured cadence. The previous sequential ten-device loop took ~49 min
@@ -207,20 +209,35 @@ export async function runLabStaging({
       }
       requestedDevices.push(deviceId);
       requests.push((async () => {
+        // Retransmit the identical device/boot/sequence on transient network
+        // failures only. The API deduplicates this identity. Two 10s attempts
+        // plus 250ms backoff fit inside the real 30s telemetry cadence.
+        const body = JSON.stringify(frame);
+        for (let attempt = 0; attempt < 2; attempt++) {
         let response;
         const timeoutSignal = AbortSignal.timeout(10_000);
+        let result;
         try {
           response = await fetchImpl(url.href, {
             method: "POST",
             headers,
             redirect: "error",
             cache: "no-store",
-            body: JSON.stringify(frame),
+            body,
             signal: timeoutSignal,
           });
+          if (response.status === 200) result = await response.json();
         } catch (error) {
+          const reason = classifyFetchFailure(error, timeoutSignal);
+          const transient = reason === "timeout" || reason.startsWith("network-") && reason !== "network-or-redirect";
+          if (attempt === 0 && transient && paceMs === 30_000) {
+            retryAttempts++;
+            if (onRetry) onRetry({ tick: tick + 1, totalTicks: ticks, deviceId, attempt: 2, reason });
+            await sleep(250);
+            continue;
+          }
           throw new Error(
-            "Lab staging request failed (" + classifyFetchFailure(error, timeoutSignal) +
+            "Lab staging request failed (" + reason +
             "); stopping safely",
           );
         }
@@ -230,10 +247,11 @@ export async function runLabStaging({
           }
           throw new Error("Staging telemetry rejected (HTTP " + response.status + ")");
         }
-        const result = await response.json().catch(() => null);
         if (!result || result.ok !== true || result.accepted !== true ||
             result.deviceStatus !== "active") {
           throw new Error("Lab staging did not confirm an active test device");
+        }
+        return attempt > 0;
         }
       })());
     }
@@ -241,7 +259,10 @@ export async function runLabStaging({
     let failure = null;
     let failedDevice = null;
     for (const [index, outcome] of outcomes.entries()) {
-      if (outcome.status === "fulfilled") delivered++;
+      if (outcome.status === "fulfilled") {
+        delivered++;
+        if (outcome.value) recoveredRequests++;
+      }
       else if (!failure) {
         failure = outcome.reason;
         failedDevice = requestedDevices[index];
@@ -261,7 +282,7 @@ export async function runLabStaging({
   return {
     target: url.origin,
     devices, ticks, intervalSeconds, paceMs,
-    delivered, omitted, soakOutage,
+    delivered, omitted, soakOutage, retryAttempts, recoveredRequests,
     outageDevice: soakOutage ? labDeviceId(0) : null,
     outageTicks: soakOutage ? [LAB_SOAK_OUTAGE_START_TICK, LAB_SOAK_OUTAGE_END_TICK] : null,
     elapsedMs: Math.round(nowMs() - startedAtMs),
