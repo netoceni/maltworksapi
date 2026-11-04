@@ -200,24 +200,61 @@ export async function recordTelemetryNotifications(
     }, now));
   }
 
-  const offlineState = await env.DB.prepare(
-    "SELECT active FROM notification_states WHERE device_id = ?1 AND type = 'offline'",
-  ).bind(payload.deviceId).first<{ active: number }>();
-  if (offlineState?.active === 1) {
-    await setState(env.DB, payload.deviceId, "offline", false, now, `${base}:device:online`);
-    created.push(...await createOne(env.DB, {
-      organizationId: previous.organizationId,
-      deviceId: payload.deviceId,
-      eventKey: `${base}:device:online`,
-      category: "device",
-      type: "device_online",
-      severity: "success",
-      title: `${deviceName} voltou a ficar online`,
-      message: "A comunicação com o controlador foi restabelecida.",
-    }, now));
-  }
+  // The first authenticated HTTP packet or an authenticated WS reconnect
+  // may clear the same incident. A conditional D1 update elects one winner.
+  created.push(...await recordDeviceOnline(env, payload.deviceId, now));
 
   return created;
+}
+
+/**
+ * Resolve an offline notification when authenticated communication resumes.
+ * Called only on a WS device connection and on HTTP telemetry ingestion,
+ * never on each WS heartbeat. No write when the device is already online.
+ *
+ * The offline event_key identifies the incident. Its compare-and-swap update
+ * prevents duplicate recovery notifications when HTTP and WS overlap.
+ */
+export async function recordDeviceOnline(
+  env: Env,
+  deviceId: string,
+  now = Math.floor(Date.now() / 1_000),
+): Promise<string[]> {
+  const previous = await env.DB.prepare(
+    `SELECT d.organization_id AS organizationId, d.name,
+            ns.last_event_key AS offlineEventKey
+       FROM notification_states ns
+       JOIN devices d ON d.id = ns.device_id
+      WHERE ns.device_id = ?1 AND ns.type = 'offline' AND ns.active = 1
+        AND d.organization_id IS NOT NULL AND d.status = 'active'`,
+  ).bind(deviceId).first<{
+    organizationId: string;
+    name: string;
+    offlineEventKey: string | null;
+  }>();
+
+  if (!previous) return [];
+
+  const eventKey = `${deviceId}:online-after:${previous.offlineEventKey ?? `legacy-${now}`}`;
+  const changed = await env.DB.prepare(
+    `UPDATE notification_states
+        SET active = 0, changed_at = ?1, last_event_key = ?2
+      WHERE device_id = ?3 AND type = 'offline' AND active = 1
+        AND last_event_key IS ?4`,
+  ).bind(now, eventKey, deviceId, previous.offlineEventKey).run();
+
+  if ((changed.meta.changes ?? 0) !== 1) return [];
+
+  return createOne(env.DB, {
+    organizationId: previous.organizationId,
+    deviceId,
+    eventKey,
+    category: "device",
+    type: "device_online",
+    severity: "success",
+    title: `${previous.name} voltou a ficar online`,
+    message: "A comunicação com o controlador foi restabelecida.",
+  }, now);
 }
 
 export async function scanOfflineDevices(env: Env): Promise<string[]> {

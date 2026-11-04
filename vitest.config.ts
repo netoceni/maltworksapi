@@ -1,6 +1,6 @@
 import path from "node:path";
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [
@@ -19,6 +19,8 @@ export default defineConfig({
     })),
   ],
   test: {
+    // This is a native node:test suite, run separately with node --test.
+    exclude: [...configDefaults.exclude, "scripts/**/*.spec.mjs"],
     setupFiles: ["./test/apply-migrations.ts"],
     testTimeout: 30_000,
   },

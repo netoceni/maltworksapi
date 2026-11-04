@@ -1,0 +1,2 @@
+# Vite's SSR transform must recognize this imported CLI's shebang on Windows.
+scripts/maltworks-lab.mjs text eol=lf
