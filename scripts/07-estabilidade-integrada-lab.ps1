@@ -178,6 +178,13 @@ function Iniciar-EmissorHttp(
     return $Child
 }
 
+function Ler-LogHttp([string] $Path) {
+    # Get-Content attaches PSDrive/PSProvider metadata to its strings in
+    # Windows PowerShell 5. Serializing those at depth 8 expands the provider
+    # object graph instead of writing a small log message. Read plain strings.
+    return [System.IO.File]::ReadAllLines($Path)
+}
+
 function Obter-D1 {
     $Raw = & npx.cmd wrangler d1 info maltworks-lab-staging --config $ConfigPath --json
     if ($LASTEXITCODE -ne 0) { throw "Consulta de metadados D1 falhou." }
@@ -497,7 +504,7 @@ try {
 
         # Never echo raw stderr; only allow known simulator messages.
         if (Test-Path -LiteralPath $ErrorFile -PathType Leaf) {
-            $Lines = @(Get-Content -LiteralPath $ErrorFile -ErrorAction SilentlyContinue)
+            $Lines = @(Ler-LogHttp $ErrorFile)
             foreach ($Line in $Lines) {
                 if ($Line -match '^Maltworks Lab start: tick=[0-9]{1,2}/60$') {
                     $HttpLastStarted = $Line

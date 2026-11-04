@@ -9,6 +9,9 @@ if (@($Errors).Count -ne 0) { throw 'Lab script syntax failed' }
 $Function = $Ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Iniciar-EmissorHttp'}, $true)
 if ($null -eq $Function) { throw 'HTTP process helper missing' }
 Invoke-Expression $Function.Extent.Text
+$LogFunction = $Ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Ler-LogHttp'}, $true)
+if ($null -eq $LogFunction) { throw 'Plain-text log reader missing' }
+Invoke-Expression $LogFunction.Extent.Text
 $Scratch = Join-Path ([IO.Path]::GetTempPath()) ('maltworks-exit-test-' + [guid]::NewGuid().ToString('N'))
 $null = [IO.Directory]::CreateDirectory($Scratch)
 try {
@@ -30,4 +33,13 @@ try {
             foreach ($File in @($OutFile,$ErrFile)) { if (Test-Path -LiteralPath $File) { Remove-Item -LiteralPath $File -Force } }
         }
     }
+    $LogPath = Join-Path $Scratch 'log.txt'
+    try {
+        [IO.File]::WriteAllText($LogPath, "Maltworks Lab progress: tick=60/60 delivered=595 omitted=5`n")
+        $Lines = @(Ler-LogHttp $LogPath)
+        if ($Lines.Count -ne 1 -or $null -ne $Lines[0].PSObject.Properties['PSDrive']) { throw 'Filesystem provider metadata leaked into log strings' }
+        $Json = [ordered]@{ http_last_progress = $Lines[0] } | ConvertTo-Json -Depth 8
+        if ($Json.Length -gt 512 -or ($Json | ConvertFrom-Json).http_last_progress -isnot [string]) { throw 'Log report expanded provider objects' }
+        Write-Host 'Log report remains a small JSON string without filesystem metadata.'
+    } finally { Remove-Item -LiteralPath $LogPath -Force }
 } finally { Remove-Item -LiteralPath $Scratch -Force }
