@@ -165,6 +165,19 @@ function Fechar-Socket([System.Net.WebSockets.ClientWebSocket] $Socket) {
 
 
 
+function Iniciar-EmissorHttp(
+    [string] $NodePath, [string[]] $NodeArgs, [string] $Root,
+    [string] $OutputFile, [string] $ErrorFile
+) {
+    $Child = Start-Process -FilePath $NodePath -ArgumentList $NodeArgs -WorkingDirectory $Root -RedirectStandardOutput $OutputFile -RedirectStandardError $ErrorFile -PassThru -WindowStyle Hidden
+    if ($null -eq $Child -or $Child.Id -le 0) { throw "Emissor HTTP nao iniciou." }
+    # Windows PowerShell 5 can return a null ExitCode after HasExited polling
+    # when redirected Start-Process output is used. Retain the native handle
+    # while the process is alive so its actual exit status remains available.
+    $null = $Child.Handle
+    return $Child
+}
+
 function Obter-D1 {
     $Raw = & npx.cmd wrangler d1 info maltworks-lab-staging --config $ConfigPath --json
     if ($LASTEXITCODE -ne 0) { throw "Consulta de metadados D1 falhou." }
@@ -359,8 +372,7 @@ try {
                 "--pace-ms", "30000", "--soak-outage"
             )
             $NodePath = (Get-Command node -ErrorAction Stop).Source
-            $Process = Start-Process -FilePath $NodePath -ArgumentList $NodeArgs -WorkingDirectory $Root -RedirectStandardOutput $OutputFile -RedirectStandardError $ErrorFile -PassThru -WindowStyle Hidden
-            if ($null -eq $Process -or $Process.Id -le 0) { throw "Emissor HTTP nao iniciou." }
+            $Process = Iniciar-EmissorHttp -NodePath $NodePath -NodeArgs $NodeArgs -Root $Root -OutputFile $OutputFile -ErrorFile $ErrorFile
         } finally {
             foreach ($Name in $Names) {
                 [Environment]::SetEnvironmentVariable($Name, $Saved[$Name], "Process")

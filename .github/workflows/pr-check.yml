@@ -77,3 +77,5 @@ jobs:
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-lab-socket-cleanup.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-lab-socket-cleanup.ps1 -LabScriptName 06-websocket-lab.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-lab-process-exit.ps1
