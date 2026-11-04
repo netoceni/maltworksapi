@@ -1,4 +1,13 @@
-# Maltworks Cloud API 5.18.0
+# Maltworks Cloud API 5.19.0
+
+## Histórico inteligente 5.19
+
+- Agregados de 5 minutos e horários, com backfill retomável e consulta por organização.
+- Retenção de 7 dias para dados brutos, 90 dias para agregados de 5 minutos e 365 dias para horários.
+- Cron arquiva antes de limpar; os testes usam D1 isolado e incluem o handler agendado real.
+- Staging mantém retenção desativada por padrão; sua ativação é independente dos demais trabalhos do cron.
+- Histórico Plus/Pro integrado ao painel 5.19. Cobrança automática não faz parte desta versão.
+- Testes completos em Windows (Node 22/24) e Ubuntu. Homologação e publicação são registradas nos PRs API #14 e Cloud #11.
 
 ## Pré-venda real 5.18.0
 

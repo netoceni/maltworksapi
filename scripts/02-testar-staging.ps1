@@ -89,8 +89,8 @@ function Conferir-Dominio-No-Painel([string] $Account, [string] $Worker, [switch
 Push-Location $Root
 try {
     $Branch = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $Branch -ne $BranchExpected) {
-        throw "Execute este script apenas na branch de homologacao PR #18."
+    if ($LASTEXITCODE -ne 0 -or ($Branch -ne $BranchExpected -and $Branch -ne "main")) {
+        throw "Execute este script na main ou na branch de homologacao PR #18."
     }
 
     if (-not $Enviar) {

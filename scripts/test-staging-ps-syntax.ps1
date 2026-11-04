@@ -169,7 +169,7 @@ foreach ($Required in @(
     "ABRIR 10 WS LAB",
     "heartbeat_ack",
     "SetRequestHeader",
-    "CloseAsync"
+    "CloseOutputAsync"
 )) {
     if (-not $WebSocketPilot.Contains($Required)) {
         throw ("WebSocket Lab guarda ausente: " + $Required)
@@ -184,7 +184,7 @@ if ($WebSocketPilot -match '(?i)wss?://(api|app|admin)\.maltworks\.com\.br/' -or
 foreach ($Required in @(
     '$null = $Socket.ConnectAsync(',
     '$null = $Socket.SendAsync(',
-    '$null = $Socket.CloseAsync('
+    '$Closing = $Socket.CloseOutputAsync('
 )) {
     if (-not $WebSocketPilot.Contains($Required)) {
         throw ("WebSocket task output guard missing: " + $Required)

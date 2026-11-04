@@ -214,44 +214,44 @@ export async function runLabStaging({
         // plus 250ms backoff fit inside the real 30s telemetry cadence.
         const body = JSON.stringify(frame);
         for (let attempt = 0; attempt < 2; attempt++) {
-        let response;
-        const timeoutSignal = AbortSignal.timeout(10_000);
-        let result;
-        try {
-          response = await fetchImpl(url.href, {
-            method: "POST",
-            headers,
-            redirect: "error",
-            cache: "no-store",
-            body,
-            signal: timeoutSignal,
-          });
-          if (response.status === 200) result = await response.json();
-        } catch (error) {
-          const reason = classifyFetchFailure(error, timeoutSignal);
-          const transient = reason === "timeout" || reason.startsWith("network-") && reason !== "network-or-redirect";
-          if (attempt === 0 && transient && paceMs === 30_000) {
-            retryAttempts++;
-            if (onRetry) onRetry({ tick: tick + 1, totalTicks: ticks, deviceId, attempt: 2, reason });
-            await sleep(250);
-            continue;
+          let response;
+          const timeoutSignal = AbortSignal.timeout(10_000);
+          let result;
+          try {
+            response = await fetchImpl(url.href, {
+              method: "POST",
+              headers,
+              redirect: "error",
+              cache: "no-store",
+              body,
+              signal: timeoutSignal,
+            });
+            if (response.status === 200) result = await response.json();
+          } catch (error) {
+            const reason = classifyFetchFailure(error, timeoutSignal);
+            const transient = reason === "timeout" || reason.startsWith("network-") && reason !== "network-or-redirect";
+            if (attempt === 0 && transient && paceMs === 30_000) {
+              retryAttempts++;
+              if (onRetry) onRetry({ tick: tick + 1, totalTicks: ticks, deviceId, attempt: 2, reason });
+              await sleep(250);
+              continue;
+            }
+            throw new Error(
+              "Lab staging request failed (" + reason +
+              "); stopping safely",
+            );
           }
-          throw new Error(
-            "Lab staging request failed (" + reason +
-            "); stopping safely",
-          );
-        }
-        if (response.status !== 200) {
-          if (response.status === 202) {
-            throw new Error("Staging device is pending; claim it in the staging organization first");
+          if (response.status !== 200) {
+            if (response.status === 202) {
+              throw new Error("Staging device is pending; claim it in the staging organization first");
+            }
+            throw new Error("Staging telemetry rejected (HTTP " + response.status + ")");
           }
-          throw new Error("Staging telemetry rejected (HTTP " + response.status + ")");
-        }
-        if (!result || result.ok !== true || result.accepted !== true ||
-            result.deviceStatus !== "active") {
-          throw new Error("Lab staging did not confirm an active test device");
-        }
-        return attempt > 0;
+          if (!result || result.ok !== true || result.accepted !== true ||
+              result.deviceStatus !== "active") {
+            throw new Error("Lab staging did not confirm an active test device");
+          }
+          return attempt > 0;
         }
       })());
     }

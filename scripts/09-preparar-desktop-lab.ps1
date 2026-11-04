@@ -19,8 +19,8 @@ $DeviceVault = Join-Path $VaultDir 'lab-staging-ten-tokens.dpapi'
 Push-Location $Root
 try {
     $Actual = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $Actual -cne $ExpectedBranch) {
-        throw 'Selecione a branch de homologacao antes de preparar o desktop.'
+    if ($LASTEXITCODE -ne 0 -or ($Actual -cne $ExpectedBranch -and $Actual -cne "main")) {
+        throw 'Selecione main ou a branch de homologacao antes de preparar o desktop.'
     }
     & node --version
     if ($LASTEXITCODE -ne 0) { throw 'Node.js nao encontrado.' }

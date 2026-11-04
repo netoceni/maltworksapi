@@ -53,8 +53,8 @@ $TokenMapPlain = $null
 $SelectedTokens = $null
 try {
     $CurrentBranch = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $CurrentBranch -cne $ExpectedBranch) {
-        throw "Branch incorreta. Nenhuma transmissao foi iniciada."
+    if ($LASTEXITCODE -ne 0 -or ($CurrentBranch -cne $ExpectedBranch -and $CurrentBranch -cne "main")) {
+        throw "Use main ou a branch de homologacao. Nenhuma transmissao foi iniciada."
     }
     if (-not (Test-Path -LiteralPath $ConfigPath)) {
         throw "Configuracao local de staging ausente."

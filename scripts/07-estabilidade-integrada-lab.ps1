@@ -209,8 +209,8 @@ $ClientSecret = $null
 $script:ComandosPendentes = 0
 try {
     $CurrentBranch = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $CurrentBranch -cne $Branch) {
-        throw "Branch nao corresponde a homologacao. Nenhum WS aberto."
+    if ($LASTEXITCODE -ne 0 -or ($CurrentBranch -cne $Branch -and $CurrentBranch -cne "main")) {
+        throw "Use main ou a branch de homologacao. Nenhum WS aberto."
     }
 
     if (-not (Test-Path -LiteralPath $ConfigPath)) {

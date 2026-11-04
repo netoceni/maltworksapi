@@ -92,8 +92,8 @@ function Invoke-Crypto($Data) {
 Push-Location $Root
 try {
     $CurrentBranch = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $CurrentBranch -cne $ExpectedBranch) {
-        throw 'Operacao permitida apenas na branch de homologacao do Maltworks Lab.'
+    if ($LASTEXITCODE -ne 0 -or ($CurrentBranch -cne $ExpectedBranch -and $CurrentBranch -cne "main")) {
+        throw 'Operacao permitida na main ou na branch de homologacao do Maltworks Lab.'
     }
     if (-not (Test-Path -LiteralPath $CryptoFile)) {
         throw 'Modulo de criptografia do Lab nao encontrado.'

@@ -56,8 +56,8 @@ function Validar-Credencial([string] $TokenId, [string] $ClientId, [string] $Cli
 
 Push-Location $Root
 try {
-    if ((& git branch --show-current | Out-String).Trim() -ne $ExpectedBranch) {
-        throw "Branch diferente da homologacao. Nada foi alterado."
+    if ((& git branch --show-current | Out-String).Trim() -notin @($ExpectedBranch, "main")) {
+        throw "Use main ou a branch de homologacao. Nada foi alterado."
     }
     if ($Etapa -eq "Guardar") {
         if (Test-Path -LiteralPath $VaultFile) {

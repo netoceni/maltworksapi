@@ -1,8 +1,9 @@
+param([ValidateSet('06-websocket-lab.ps1','07-estabilidade-integrada-lab.ps1')][string]$LabScriptName = '07-estabilidade-integrada-lab.ps1')
 # Regression: a peer that never acknowledges close must not hang the Lab.
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$Source = Join-Path $PSScriptRoot '07-estabilidade-integrada-lab.ps1'
+$Source = Join-Path $PSScriptRoot $LabScriptName
 $Tokens = $null
 $Errors = $null
 $Ast = [System.Management.Automation.Language.Parser]::ParseFile($Source, [ref]$Tokens, [ref]$Errors)
@@ -13,13 +14,15 @@ Invoke-Expression $CloseFunction.Extent.Text
 
 $Peer = [System.Diagnostics.Process]::new()
 $Socket = [System.Net.WebSockets.ClientWebSocket]::new()
+$PeerStarted = $false
 try {
     $Peer.StartInfo.FileName = (Get-Command node -ErrorAction Stop).Source
     $Peer.StartInfo.Arguments = '"' + (Join-Path $Root 'test/fixtures/lab-hanging-peer.mjs') + '"'
     $Peer.StartInfo.UseShellExecute = $false
     $Peer.StartInfo.CreateNoWindow = $true
     $Peer.StartInfo.RedirectStandardOutput = $true
-    if (-not $Peer.Start()) { throw 'Local fixture failed to start' }
+    $PeerStarted = $Peer.Start()
+    if (-not $PeerStarted) { throw 'Local fixture failed to start' }
     $Line = $Peer.StandardOutput.ReadLineAsync()
     if (-not $Line.Wait(5000)) { throw 'Local fixture start timed out' }
     $Port = [int](ConvertFrom-Json $Line.Result).port
@@ -36,6 +39,6 @@ try {
 } finally {
     $Socket.Abort()
     $Socket.Dispose()
-    if ($Peer.Id -gt 0 -and -not $Peer.HasExited) { $Peer.Kill(); $null = $Peer.WaitForExit(5000) }
+    if ($PeerStarted -and -not $Peer.HasExited) { $Peer.Kill(); $null = $Peer.WaitForExit(5000) }
     $Peer.Dispose()
 }

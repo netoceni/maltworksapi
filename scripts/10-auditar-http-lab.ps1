@@ -26,8 +26,8 @@ function Query-D1([string] $Sql) {
 
 Push-Location $Root
 try {
-    if ((& git branch --show-current | Out-String).Trim() -cne $Branch) {
-        throw "Branch incorreta; auditoria cancelada."
+    if ((& git branch --show-current | Out-String).Trim() -cnotin @($Branch, "main")) {
+        throw "Use main ou a branch de homologacao; auditoria cancelada."
     }
     if (-not (Test-Path -LiteralPath $Config) -or -not (Test-Path -LiteralPath $ReportPath)) {
         throw "Configuracao ou relatorio anterior nao encontrado."

@@ -144,11 +144,14 @@ function Fechar-Socket([System.Net.WebSockets.ClientWebSocket] $Socket) {
         if ($Socket.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
             $Cancel = [System.Threading.CancellationTokenSource]::new(3000)
             try {
-                $null = $Socket.CloseAsync(
+                $Closing = $Socket.CloseOutputAsync(
                     [System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure,
                     "Lab test complete",
                     $Cancel.Token
-                ).GetAwaiter().GetResult()
+                )
+                # A peer that does not finish its close handshake must never
+                # prevent the report/error from reaching the caller.
+                if ($Closing.Wait(1000)) { $null = $Closing.GetAwaiter().GetResult() }
             } finally {
                 $Cancel.Dispose()
             }
@@ -156,6 +159,7 @@ function Fechar-Socket([System.Net.WebSockets.ClientWebSocket] $Socket) {
     } catch {
         # Always dispose, including if the close handshake timed out.
     } finally {
+        $Socket.Abort()
         $Socket.Dispose()
     }
 }
@@ -169,8 +173,8 @@ $ClientSecret = $null
 $script:ComandosPendentes = 0
 try {
     $CurrentBranch = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $CurrentBranch -cne $Branch) {
-        throw "Branch nao corresponde a homologacao. Nenhum WS aberto."
+    if ($LASTEXITCODE -ne 0 -or ($CurrentBranch -cne $Branch -and $CurrentBranch -cne "main")) {
+        throw "Use main ou a branch de homologacao. Nenhum WS aberto."
     }
 
     if (-not (Test-Path -LiteralPath $ConfigPath)) {

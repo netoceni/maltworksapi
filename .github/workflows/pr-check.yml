@@ -73,4 +73,7 @@ jobs:
       - name: Test internal Maltworks Lab and staging security gates
         run: node --test scripts/maltworks-lab*.spec.mjs
       - name: Regression for an unresponsive WebSocket close handshake
-        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-lab-socket-cleanup.ps1
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-lab-socket-cleanup.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-lab-socket-cleanup.ps1 -LabScriptName 06-websocket-lab.ps1

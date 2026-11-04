@@ -109,8 +109,8 @@ try {
         throw "Template de staging nao localizado. Confira a branch."
     }
     $Branch = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $Branch -ne $RequiredBranch) {
-        throw ("Branch incorreta: " + $Branch + ". Necessaria: " + $RequiredBranch)
+    if ($LASTEXITCODE -ne 0 -or ($Branch -ne $RequiredBranch -and $Branch -ne "main")) {
+        throw ("Branch incorreta: " + $Branch + ". Permitidas: main e " + $RequiredBranch)
     }
     Write-Host ("Maltworks Lab / Etapa: " + $Etapa) -ForegroundColor Cyan
     Executar-Wrangler -Parametros @("whoami")

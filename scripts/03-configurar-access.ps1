@@ -132,8 +132,8 @@ function Verificar-Aplicacao($Aplicacao, $TokenId, [string] $Email) {
 Push-Location $Root
 try {
     $Branch = (& git branch --show-current | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $Branch -ne $BranchExpected) {
-        throw "Branch incorreta: use exclusivamente a homologacao PR #18."
+    if ($LASTEXITCODE -ne 0 -or ($Branch -ne $BranchExpected -and $Branch -ne "main")) {
+        throw "Branch incorreta: use main ou a homologacao PR #18."
     }
     if (-not (Test-Path -LiteralPath $WorkerConfig)) {
         throw "Configuracao local de staging nao encontrada."
