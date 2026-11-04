@@ -1,17 +1,19 @@
 {
   "name": "maltworks-cloud-api",
-  "version": "5.18.0",
+  "version": "5.19.0",
   "private": true,
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "npm run test:core && npm run test:realtime",
     "test:watch": "vitest",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:create": "wrangler d1 create maltworks-production",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "test:core": "vitest run --exclude test/realtime-online.integration.spec.ts",
+    "test:realtime": "vitest run test/realtime-online.integration.spec.ts --maxWorkers=1 --no-isolate"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.20.1",

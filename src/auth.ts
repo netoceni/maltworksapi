@@ -340,15 +340,18 @@ export async function requireSession(request: Request, env: Env): Promise<Sessio
   }
 
   const memberships = await env.DB.prepare(
-    `SELECT o.id AS organizationId, o.name AS organizationName, m.role
+    `SELECT o.id AS organizationId, o.name AS organizationName, m.role,
+            COALESCE(hp.plan_code, 'essential') AS historyPlan
        FROM organization_members m
        JOIN organizations o ON o.id = m.organization_id
+       LEFT JOIN organization_history_plans hp ON hp.organization_id = o.id
       WHERE m.user_id = ?1
       ORDER BY m.created_at ASC`,
   ).bind(user.id).all<{
     organizationId: string;
     organizationName: string;
     role: "owner" | "admin" | "member" | "viewer";
+    historyPlan: "essential" | "plus" | "pro";
   }>();
 
   return {

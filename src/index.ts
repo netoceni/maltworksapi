@@ -15,7 +15,11 @@ import {
 } from "./devices";
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
-import { runTelemetryRetention, shouldPruneTelemetry } from "./retention";
+import { runTelemetryRetention, shouldPruneTelemetry, scheduledJobGates, type ScheduledJobGateVars } from "./retention";
+import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
+import { aggregatedDeviceHistory } from "./history-query";
+import { adminIntelligentHistoryHealth } from "./history-health";
+import { runIntelligentHistoryExpiry, shouldExpireHistory } from "./history-retention";
 import { runD1DailyHealth, shouldRunD1DailyHealth } from "./d1-health";
 import { createRecipe, deleteRecipe, listRecipes, updateRecipe } from "./recipes";
 import {
@@ -73,7 +77,7 @@ import {
 
 export { RealtimeHub };
 
-const API_VERSION = "5.18.0";
+const API_VERSION = "5.19.0";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -88,6 +92,20 @@ export default {
   },
   scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
     ctx.waitUntil((async () => {
+      // Archive first. The isolated Lab may opt into retention independently
+      // without running offline scans, notifications or other cron jobs.
+      const jobs = scheduledJobGates(env as Env & ScheduledJobGateVars);
+      if (shouldRollupHistory(controller.scheduledTime)) {
+        try {
+          await runIntelligentHistoryRollup(env, controller.scheduledTime);
+        } catch (error) {
+          console.error("History rollup failed; raw retention remains guarded", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      // Default Lab configuration stops after archiving (all expiries disabled).
+      if (!jobs.retention) return;
       if (shouldPruneTelemetry(controller.scheduledTime)) {
         try {
           await runTelemetryRetention(env, controller.scheduledTime);
@@ -97,6 +115,17 @@ export default {
           });
         }
       }
+      if (shouldExpireHistory(controller.scheduledTime)) {
+        try {
+          await runIntelligentHistoryExpiry(env, controller.scheduledTime);
+        } catch (error) {
+          console.error("Intelligent history expiry failed; archives unchanged if guard blocks", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      // Lab retention mode must not accidentally activate production housekeeping.
+      if (!jobs.maintenance) return;
       if (shouldRunD1DailyHealth(controller.scheduledTime)) {
         try {
           await runD1DailyHealth(env, controller.scheduledTime);
@@ -180,6 +209,9 @@ async function route(
   }
   if (request.method === "GET" && path === "/v1/admin/me") {
     return adminMe(request, env, requestId);
+  }
+  if (request.method === "GET" && path === "/v1/admin/history/health") {
+    return adminIntelligentHistoryHealth(request, env, requestId);
   }
   if (request.method === "GET" && path === "/v1/admin/overview") {
     return adminOverview(request, env, requestId);
@@ -317,6 +349,10 @@ async function route(
   }
   if (request.method === "DELETE" && deviceMatch?.[1]) {
     return deleteDevice(request, env, requestId, deviceMatch[1]);
+  }
+  const aggregateHistoryMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/history\/summary$/u.exec(path);
+  if (request.method === "GET" && aggregateHistoryMatch?.[1]) {
+    return aggregatedDeviceHistory(request, env, requestId, aggregateHistoryMatch[1]);
   }
   const historyMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/telemetry$/u.exec(path);
   if (request.method === "GET" && historyMatch?.[1]) {

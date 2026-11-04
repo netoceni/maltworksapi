@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   D1_STORAGE_WARNING_BYTES,
+  RETENTION_BATCH_SIZE,
   pruneExpiredTelemetry,
   runTelemetryRetention,
   shouldPruneTelemetry,
   telemetryRetentionDays,
+  scheduledJobGates,
 } from "../src/retention";
 
 describe("raw telemetry retention", () => {
@@ -15,6 +17,8 @@ describe("raw telemetry retention", () => {
     expect(() => telemetryRetentionDays("-1")).toThrow();
     expect(() => telemetryRetentionDays("7.5")).toThrow();
     expect(() => telemetryRetentionDays("3651")).toThrow();
+    expect(RETENTION_BATCH_SIZE * 6 * 24).toBe(36_000);
+    expect(RETENTION_BATCH_SIZE * 6 * 24).toBeGreaterThan(10 * 480 * 1.05);
     expect(shouldPruneTelemetry(Date.UTC(2026, 9, 27, 10, 20))).toBe(true);
     expect(shouldPruneTelemetry(Date.UTC(2026, 9, 27, 10, 21))).toBe(false);
   });
@@ -26,6 +30,9 @@ describe("raw telemetry retention", () => {
     const db = {
       prepare(statement: string) {
         calls++;
+        if (statement.includes("history_rollup_watermarks")) {
+          return { first: async () => ({ completedUntil: 1_800_000_000, resolutions: 2 }) };
+        }
         sql = statement;
         return {
           bind(...values: unknown[]) {
@@ -55,7 +62,7 @@ describe("raw telemetry retention", () => {
     expect(sql).toContain("received_at < ?1");
     expect(sql).toContain("LIMIT ?2");
     expect(args).toEqual([1_800_000_000 - 7 * 86_400, 250]);
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
 
     expect(await pruneExpiredTelemetry(db, 1_800_000_000, 0)).toEqual({
       deletedRows: 0,
@@ -63,20 +70,23 @@ describe("raw telemetry retention", () => {
       rowsRead: null,
       rowsWritten: null,
     });
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
     await expect(pruneExpiredTelemetry(db, 1_800_000_000, 7, 1001)).rejects.toThrow();
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
   });
 
   it("warns when D1 storage or pruning batch approaches capacity", async () => {
     const db = {
-      prepare() {
+      prepare(statement: string) {
+        if (statement.includes("history_rollup_watermarks")) {
+          return { first: async () => ({ completedUntil: 1_800_000_000, resolutions: 2 }) };
+        }
         return {
           bind() {
             return {
               run: async () => ({
                 meta: {
-                  changes: 250,
+                  changes: RETENTION_BATCH_SIZE,
                   size_after: D1_STORAGE_WARNING_BYTES,
                   rows_read: 251,
                   rows_written: 500,
@@ -91,10 +101,10 @@ describe("raw telemetry retention", () => {
     const info = vi.spyOn(console, "info").mockImplementation(() => {});
     try {
       const env = { DB: db, TELEMETRY_RETENTION_DAYS: "7" } as unknown as Env;
-      expect(await runTelemetryRetention(env, 1_800_000_000_000)).toBe(250);
+      expect(await runTelemetryRetention(env, 1_800_000_000_000)).toBe(RETENTION_BATCH_SIZE);
       expect(info).toHaveBeenCalledWith(
         "Telemetry retention",
-        expect.objectContaining({ deletedRows: 250, sizeAfterBytes: D1_STORAGE_WARNING_BYTES }),
+        expect.objectContaining({ deletedRows: RETENTION_BATCH_SIZE, sizeAfterBytes: D1_STORAGE_WARNING_BYTES }),
       );
       expect(warn).toHaveBeenCalledWith(
         "D1 storage approaching free-tier capacity",
@@ -102,11 +112,47 @@ describe("raw telemetry retention", () => {
       );
       expect(warn).toHaveBeenCalledWith(
         "Telemetry retention batch at capacity",
-        expect.objectContaining({ batchSize: 250 }),
+        expect.objectContaining({ batchSize: RETENTION_BATCH_SIZE }),
       );
     } finally {
       warn.mockRestore();
       info.mockRestore();
     }
+  });
+});
+
+describe("cron isolation policy for Lab staging", () => {
+  it("preserves production cron behavior without the staging flag", () => {
+    expect(scheduledJobGates({})).toEqual({
+      retention: true, maintenance: true,
+    });
+    expect(scheduledJobGates({ TELEMETRY_RETENTION_DAYS: "7" })).toEqual({
+      retention: true, maintenance: true,
+    });
+  });
+
+  it("keeps both cleanup and maintenance disabled in rollup-only Lab by default", () => {
+    expect(scheduledJobGates({
+      LAB_STAGING_ROLLUP_ONLY: "true",
+      TELEMETRY_RETENTION_DAYS: "0",
+      HISTORY_5MIN_RETENTION_DAYS: "0",
+      HISTORY_HOURLY_RETENTION_DAYS: "0",
+    })).toEqual({ retention: false, maintenance: false });
+  });
+
+  it("enables only retention under exact 7/90/365 staging windows", () => {
+    const staged = {
+      LAB_STAGING_ROLLUP_ONLY: "true",
+      LAB_STAGING_ENABLE_RETENTION: "true",
+      TELEMETRY_RETENTION_DAYS: "7",
+      HISTORY_5MIN_RETENTION_DAYS: "90",
+      HISTORY_HOURLY_RETENTION_DAYS: "365",
+    };
+    expect(scheduledJobGates(staged)).toEqual({
+      retention: true, maintenance: false,
+    });
+    expect(() => scheduledJobGates({ ...staged, TELEMETRY_RETENTION_DAYS: "0" })).toThrow();
+    expect(() => scheduledJobGates({ ...staged, HISTORY_5MIN_RETENTION_DAYS: "0" })).toThrow();
+    expect(() => scheduledJobGates({ ...staged, HISTORY_HOURLY_RETENTION_DAYS: "0" })).toThrow();
   });
 });

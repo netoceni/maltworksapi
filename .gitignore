@@ -4,3 +4,12 @@ node_modules/
 dist/
 coverage/
 *.log
+
+# Per-developer staging configuration and generated Lab artifacts
+wrangler.lab-staging.jsonc
+.env.lab-staging
+.dev.vars.lab-staging
+lab-*.jsonl
+
+# Never commit one-off D1 database IDs or test credentials
+wrangler.retention-disposable.jsonc
