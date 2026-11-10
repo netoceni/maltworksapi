@@ -1,9 +1,9 @@
 import { env, exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import "../src/index";
-// Node CLI has no TS declarations; the frame schema is checked by the API.
-// @ts-expect-error import of the Node ESM simulator for isolated Worker tests
-import { labDeviceId, makeLabTelemetry } from "../scripts/maltworks-lab.mjs";
+// Import the portable simulator core, not the Node-only CLI (node:url / process.argv).
+// @ts-expect-error JavaScript fixture has no TypeScript declarations
+import { labDeviceId, makeLabTelemetry } from "../scripts/maltworks-lab-core.mjs";
 
 const base = "https://api-staging.maltworks.com.br";
 const TOKEN = "ba".repeat(32);
