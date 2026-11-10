@@ -1,6 +1,7 @@
 import { requireSession, selectOrganization } from "./auth";
 import { jsonResponse, readJson } from "./http";
 import { recipeById } from "./recipes";
+import { requireOrganizationRecipes } from "./plan-policy";
 import { ApiError, type SessionContext } from "./types";
 
 const SESSION_ID_PATTERN = /^fer_[0-9a-f]{32}$/u;
@@ -81,6 +82,7 @@ export async function startFermentation(
   if (recipeId && !RECIPE_ID_PATTERN.test(recipeId)) {
     throw new ApiError(400, "INVALID_RECIPE_ID", "Selecione uma receita valida.");
   }
+  if (recipeId) await requireOrganizationRecipes(env.DB, organizationId);
   const recipe = recipeId ? await recipeById(env.DB, recipeId, organizationId) : null;
   if (recipeId && !recipe) throw new ApiError(404, "RECIPE_NOT_FOUND", "Receita nao encontrada.");
   const recipeSnapshot = recipe ? JSON.stringify(recipe) : "{}";

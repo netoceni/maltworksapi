@@ -1,28 +1,31 @@
+import { ApiError } from "./types";
+
 export const PLAN_SECONDS_PER_DAY = 86_400;
 export type PlanCode = "essential" | "plus" | "pro";
 
 export interface PlanEntitlements {
   readonly plan: PlanCode;
   readonly maxControllers: number;
+  readonly canUseRecipes: boolean;
   readonly maxRangeSeconds: number;
   readonly canUseFiveMinuteArchive: boolean;
   readonly canUseHourlyArchive: boolean;
 }
 
-// Pilot grants, not billing terms. Keep shipped controller/history policy in
+// Pilot grants, not billing terms. Keep shipped controller/history/recipe policy in
 // one place; other commercial features still require explicit API gates (#23).
 export const PLAN_POLICY = Object.freeze({
   essential: Object.freeze({
     plan: "essential", maxControllers: 1, maxRangeSeconds: 7 * PLAN_SECONDS_PER_DAY,
-    canUseFiveMinuteArchive: false, canUseHourlyArchive: false,
+    canUseFiveMinuteArchive: false, canUseHourlyArchive: false, canUseRecipes: false,
   }),
   plus: Object.freeze({
     plan: "plus", maxControllers: 2, maxRangeSeconds: 90 * PLAN_SECONDS_PER_DAY,
-    canUseFiveMinuteArchive: true, canUseHourlyArchive: false,
+    canUseFiveMinuteArchive: true, canUseHourlyArchive: false, canUseRecipes: true,
   }),
   pro: Object.freeze({
     plan: "pro", maxControllers: 5, maxRangeSeconds: 365 * PLAN_SECONDS_PER_DAY,
-    canUseFiveMinuteArchive: true, canUseHourlyArchive: true,
+    canUseFiveMinuteArchive: true, canUseHourlyArchive: true, canUseRecipes: true,
   }),
 } satisfies Record<PlanCode, PlanEntitlements>);
 
@@ -48,3 +51,12 @@ export const CONTROLLER_LIMIT_SQL = `CASE COALESCE(
   WHEN 'plus' THEN ${PLAN_POLICY.plus.maxControllers}
   WHEN 'pro' THEN ${PLAN_POLICY.pro.maxControllers}
   ELSE ${PLAN_POLICY.essential.maxControllers} END`;
+
+// Call only after session, membership and existing write-role authorization.
+// This guards new cloud recipe access, never device telemetry or in-flight work.
+export async function requireOrganizationRecipes(db: D1Database, organizationId: string): Promise<void> {
+  const entitlements = await organizationPlanEntitlements(db, organizationId);
+  if (!entitlements.canUseRecipes) {
+    throw new ApiError(403, "RECIPE_PLAN_REQUIRED", "Receitas na nuvem requerem o plano Plus ou Pro.");
+  }
+}

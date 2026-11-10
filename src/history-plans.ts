@@ -8,20 +8,20 @@ import {
 // Compatibility exports for existing history callers.
 export const HISTORY_SECONDS_PER_DAY = PLAN_SECONDS_PER_DAY;
 export type HistoryPlanCode = PlanCode;
-export type HistoryPlanEntitlements = Omit<PlanEntitlements, "maxControllers">;
+export type HistoryPlanEntitlements = Pick<PlanEntitlements,
+  "plan" | "maxRangeSeconds" | "canUseFiveMinuteArchive" | "canUseHourlyArchive">;
 export const HISTORY_PLAN_POLICY = PLAN_POLICY;
 
 export function historyEntitlements(raw: unknown): HistoryPlanEntitlements {
-  const { maxControllers: _maxControllers, ...history } = planEntitlements(raw);
-  return history;
+  const { plan, maxRangeSeconds, canUseFiveMinuteArchive, canUseHourlyArchive } = planEntitlements(raw);
+  return { plan, maxRangeSeconds, canUseFiveMinuteArchive, canUseHourlyArchive };
 }
 
 export async function organizationHistoryEntitlements(
   db: D1Database, organizationId: string,
 ): Promise<HistoryPlanEntitlements> {
-  const { maxControllers: _maxControllers, ...history } =
-    await organizationPlanEntitlements(db, organizationId);
-  return history;
+  const entitlements = await organizationPlanEntitlements(db, organizationId);
+  return historyEntitlements(entitlements.plan);
 }
 
 export function requireHistoryPlanRange(
