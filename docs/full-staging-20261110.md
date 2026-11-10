@@ -213,18 +213,31 @@ migrations; manter o novo banco separado evita afetar o Lab ou produção.
   D1/DO como se já contivesse a aplicação integrada.
 - Auditar Access/DNS requer mais leitura autorizada; proteção observada via HTTP
   não comprova o escopo de todas as políticas.
-- Cloud foi localizado em `maltworkspanel`; não existia config de staging nesse
-  repositório. Seu tooling ainda fixa override `undici@7.29.0`, diferente da árvore
-  já corrigida da API/Admin. Fazer triagem específica do Cloud antes da publicação;
-  esta preparação não altera seu lockfile ou ferramenta de produção.
+- Cloud foi localizado em `maltworkspanel`; a configuração de staging foi preparada
+  no [Cloud #12](https://github.com/netoceni/maltworkspanel/pull/12).
+  A pendência de dependências foi resolvida pelo
+  [Cloud #13](https://github.com/netoceni/maltworkspanel/pull/13), commit
+  `fdfb60da423e6802cee966e62e0ba91ec704c35f`, incorporado à branch do #12 sem
+  conflitos: Undici 7.30.1 e Sharp 0.35.5, mantendo Wrangler/Miniflare/workerd.
+  No conjunto, instalação limpa, nove testes locais e auditorias completa/produção
+  com zero alertas conhecidos. O SHA e CI final ficam no PR #12. A main continua
+  sem merge; zero alertas no conjunto não implica encerramento dos alertas na main.
 - Testes locais e CI não validam DNS, certificados, autorização Access, IDs reais,
   secrets, migrações remotas, R2 remoto ou entrega de e-mail.
 
 Validação local desta preparação: TypeScript da API; 84 testes Workers/D1/WS;
 38 testes Node (31 Lab, 3 compatibilidade, 4 configurações); 9 testes Admin;
-7 testes Cloud. As três configs privadas foram lidas pelo Wrangler 4.118.0 com
+9 testes Cloud no conjunto com as correções do #13. As três configs privadas foram lidas pelo Wrangler 4.118.0 com
 geração de tipos fora dos repositórios, sem upload. Os tipos de produção não foram
 sobrescritos. A geração lê a estrutura da config, não confirma IDs remotos.
+
+Após a incorporação do Cloud #13 ao #12, a pendência de dependências deixa de
+bloquear a preparação desse conjunto. Continuam pendentes todos os passos remotos
+da sequência e da matriz acima: auditoria DNS/Access, criação do novo D1/R2 e secrets,
+migrations no banco novo, publicação privada, proteção/ativação dos domínios e
+transferência de `api-staging`, seguida de validação com controladores simulados.
+Nenhuma dessas etapas foi executada nesta atualização documental. O checklist
+do Cloud está em [staging.md](https://github.com/netoceni/maltworkspanel/blob/prepare/full-staging-20261110/docs/staging.md).
 
 Referências oficiais: [configuração Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/),
 [cookies Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/),
