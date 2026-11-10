@@ -1,14 +1,14 @@
-# Organization plan policy — 10 Nov 2026
+# Organization plan policy â€” 10 Nov 2026
 
 This increment implements the controller claim portion of API issue #23.
 `src/plan-policy.ts` is the immutable server policy for the shipped controller
 quota and history entitlements; history callers keep their existing exports.
 
-| Plan | Linked controllers | History range | Aggregate access |
-| --- | ---: | ---: | --- |
-| Essencial (`essential`) | 1 | 7 days | Raw only |
-| Plus (`plus`) | 2 | 90 days | Five-minute |
-| Pro (`pro`) | 5 | 365 days | Five-minute and hourly |
+| Plan | Linked controllers | History range | Aggregate access | Cloud recipes |
+| --- | ---: | ---: | --- | --- |
+| Essencial (`essential`) | 1 | 7 days | Raw only | No |
+| Plus (`plus`) | 2 | 90 days | Five-minute | Yes |
+| Pro (`pro`) | 5 | 365 days | Five-minute and hourly | Yes |
 
 ## Grants and enforcement
 
@@ -74,7 +74,7 @@ The lockfile was not upgraded. Installation reported 11 dependency advisories
 
 ## Remaining inconsistencies / commercial gates
 
-- Recipes, fermentation/batches, density, exports and notifications do not yet
+- Fermentation/batches, density, exports and notifications do not yet
   have a complete centrally enforced commercial policy. Their product semantics,
   API gates and expired-subscription behavior remain work in #23.
 - Raw `/v1/devices/:id/telemetry` now applies the same history plan windows as
@@ -143,3 +143,47 @@ realtime, aggregate and controller quota tests remain in the full regression sui
 This follow-up is stacked on API #24 so only the raw-history change appears in
 its diff. No migration, telemetry ingestion, device credentials, retention policy,
 Worker configuration or workflow was changed. No merge/deploy is authorized.
+
+## Cloud recipes follow-up (development only)
+
+No physical devices are currently running; all validation uses simulated
+controllers and isolated local/CI D1. This is not a hardware or deployed-system
+validation report.
+
+`canUseRecipes` in the central policy permits Plus and Pro and denies Essencial
+or missing/invalid grants. Every public library handler (list/create/update/delete)
+checks the current organization's stored grant after authentication, membership
+and existing write-role checks. Failure is 403 `RECIPE_PLAN_REQUIRED`. Client
+fields cannot override entitlements, and a paid plan does not override viewer
+restrictions or tenant isolation. Library access is blocked on downgrade, including
+read/delete; existing recipes/stages remain stored for a later upgrade.
+
+Two other entry points use a cloud recipe: starting a new device profile and
+associating a recipe when starting a fermentation record. Both now require the
+same entitlement, preventing recipe-ID access from bypassing the library gate.
+Existing batch snapshots are historical records, not newly authorized library
+access; reading them is unchanged. Comprehensive batch/density gates remain
+separate work in #23, and Plus recipe access does not pre-decide their tiers.
+
+The gate authorizes new requests; it does not cancel commands accepted before a
+downgrade or interrupt profiles already on a controller. Telemetry, command
+confirmation/delivery and pause/resume/stop remain independent of the recipe tier.
+Manual setpoint, alarms and configuration retain their existing safety and role
+checks. No credentials, retention, schema or control-safety code was changed.
+A request authorized before a concurrent grant change may complete; subsequent
+requests resolve the new grant from D1. Subscription expiry remains unimplemented
+because there is no subscription lifecycle yet; manual revocation defaults to
+Essencial and is tested.
+
+Seven new tests exercise real HTTP routes and D1 with simulated telemetry:
+missing/Essencial denial with zero recipe/audit/command/batch mutations, Plus/Pro
+CRUD and use, request override attempts, viewer restrictions, cross-tenant recipe
+IDs and organization selection, grant revocation/upgrade and downgrade preservation.
+A simulated profile accepted before downgrade is delivered and acknowledged;
+pause/resume/stop are confirmed after downgrade and manual setpoint remains usable.
+The existing broad API regression explicitly grants Plus for its recipe scenario.
+History helpers project only their existing fields to preserve their return shape.
+
+This recipe increment is stacked on API #25. Review its isolated diff, then
+retarget and rerun CI after dependencies are handled in a separately authorized
+release process. No merge, deploy or remote migration was performed.

@@ -1,5 +1,6 @@
 import { requireSession, selectOrganization } from "./auth";
 import { jsonResponse, readJson } from "./http";
+import { requireOrganizationRecipes } from "./plan-policy";
 import { ApiError, type SessionContext } from "./types";
 
 const RECIPE_ID_PATTERN = /^rcp_[0-9a-f]{32}$/;
@@ -40,6 +41,7 @@ export async function listRecipes(
     session,
     new URL(request.url).searchParams.get("organizationId"),
   );
+  await requireOrganizationRecipes(env.DB, organizationId);
   const recipes = await recipesForOrganization(env.DB, organizationId);
   return jsonResponse({ ok: true, recipes, requestId });
 }
@@ -53,6 +55,7 @@ export async function createRecipe(
   const raw = objectValue(await readJson(request));
   const organizationId = selectOrganization(session, raw.organizationId);
   requireWriteAccess(session, organizationId);
+  await requireOrganizationRecipes(env.DB, organizationId);
   const input = recipeInput(raw);
   const currentCount = await env.DB.prepare(
     "SELECT COUNT(*) AS count FROM cloud_recipes WHERE organization_id = ?1",
@@ -100,6 +103,7 @@ export async function updateRecipe(
   const raw = objectValue(await readJson(request));
   const organizationId = selectOrganization(session, raw.organizationId);
   requireWriteAccess(session, organizationId);
+  await requireOrganizationRecipes(env.DB, organizationId);
   const input = recipeInput(raw);
   const existing = await recipeById(env.DB, recipeId, organizationId);
   if (!existing) throw new ApiError(404, "RECIPE_NOT_FOUND", "Receita nao encontrada.");
@@ -144,6 +148,7 @@ export async function deleteRecipe(
     new URL(request.url).searchParams.get("organizationId"),
   );
   requireWriteAccess(session, organizationId);
+  await requireOrganizationRecipes(env.DB, organizationId);
   const existing = await recipeById(env.DB, recipeId, organizationId);
   if (!existing) throw new ApiError(404, "RECIPE_NOT_FOUND", "Receita nao encontrada.");
   const now = Math.floor(Date.now() / 1000);
