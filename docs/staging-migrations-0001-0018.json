@@ -1,0 +1,376 @@
+{
+  "verified_at": "2026-11-10T23:56:31.622513+00:00",
+  "account_id": "4e8c08f70722d344cf39c362a110d706",
+  "database_name": "maltworks-app-staging",
+  "database_id": "5151e251-52c1-4406-8ae9-c6d38961d124",
+  "source_commit": "1b81cc9124d68bcf49d0e0830137fdc0cf10e17d",
+  "cli": "project-local Wrangler 4.118.0",
+  "authorization": "Exactly migrations 0001-0018 on staging 5151e251-52c1-4406-8ae9-c6d38961d124; no main merge or deployment",
+  "account_checked_before_apply": true,
+  "database_uuid_checked_before_apply": true,
+  "before_schema": "Only Cloudflare internal _cf_KV; no application schema or migrations table",
+  "files_verified_before_apply": [
+    {
+      "name": "0001_initial.sql",
+      "sha256_as_applied": "dfea78bc4c310fbe0711b9d333364f09e8d63969756fba66fc75ee57757b8d89",
+      "sha256_lf": "bf792e7eb316083a47f0b1e804801d879aa7473dda350b333e3ed334fdc4ff0d"
+    },
+    {
+      "name": "0002_device_commands.sql",
+      "sha256_as_applied": "b51c67be69667e6aeee2c81293f5eb0b5279ba3b2f4a04b5f5e85659b87cea38",
+      "sha256_lf": "d562b216925cc314c9b951cd7c760fd4f95f11868123fc025ad7e0ebba1f81da"
+    },
+    {
+      "name": "0003_cloud_recipes.sql",
+      "sha256_as_applied": "d8dcf716337857876b716b680c65afcb59a2dce3ebc902e8d0e0780bcaadc5e1",
+      "sha256_lf": "a23083a1b86126baf5470dcbeb84bc1cfb16227463b427f36f44be6f0cd4d435"
+    },
+    {
+      "name": "0004_device_configuration.sql",
+      "sha256_as_applied": "dba37495020b87261a1f3090cf95d483ccc007c6aeb1054aebf49478cfa367bd",
+      "sha256_lf": "7e5d7b75bf9366104b1abc68950a0aaeb96c0d1c5b39807d3e176e9607d23834"
+    },
+    {
+      "name": "0005_fermentation_tracking.sql",
+      "sha256_as_applied": "b9decf4a78e1529505cca62fe60535227c6f219adf0a5d93e96eeec95b1f0427",
+      "sha256_lf": "8e8ddd1e90096825341385d776e015759aa286119a824da58b83ea3b1adff0bc"
+    },
+    {
+      "name": "0006_sales_leads.sql",
+      "sha256_as_applied": "2a9aa1aaef777943b0b69aeda58e49fb97188ee612f885d30034c544d6ed43b6",
+      "sha256_lf": "dabec523068d3269408f856bfb783725114320d9c4bd5a4a83a88f3b389952d6"
+    },
+    {
+      "name": "0007_user_signup.sql",
+      "sha256_as_applied": "d2e742e91bd242d97629821eb3b262f5caafee9deb454b349c7b39d8488bf2c2",
+      "sha256_lf": "3d9c657b8e4948029328f100a9ac783511dce512bec5bbe06a1c8492ca35f918"
+    },
+    {
+      "name": "0008_system_admins.sql",
+      "sha256_as_applied": "3ea530fa5d7f52e832011f0dbe651a4af7ea7fae935b5b18540f7d83d1779402",
+      "sha256_lf": "4e0a73f437160bd92066fb5dd75003534e5ef13264377809061c07428fbcbb00"
+    },
+    {
+      "name": "0009_device_preferences.sql",
+      "sha256_as_applied": "be6106b5bbe435e3337b5ea57687eb1239d4ed339411d3cb97cec38817a8fc3c",
+      "sha256_lf": "17db8289f51a9d207e3714038ba030dfa7f73bd4132745eca794744387c927c8"
+    },
+    {
+      "name": "0010_notification_center.sql",
+      "sha256_as_applied": "16b2da0da645a997394c2e1f78423b9b9e9b7365ef86aebc20803ee16bfd0397",
+      "sha256_lf": "35915df992c233125c04d2e74319db5ce4e08b493e7bcea026e3366ffdecbbef"
+    },
+    {
+      "name": "0011_notification_dismissals.sql",
+      "sha256_as_applied": "2587f196e4d6a724637090dea4f9738b2c2f346305d25b54e206172c4367484f",
+      "sha256_lf": "4bedbf33cfea4782adb6436aaa9c3c48ed326b68d32af5943ebe9c42daaf0b92"
+    },
+    {
+      "name": "0012_managed_ota.sql",
+      "sha256_as_applied": "d414787b938ec7e831adc224f8fbcd511bc270e4891c8057fad214d16a713610",
+      "sha256_lf": "f83a356764c38febe60c7748ebbcc695a657ecf948ece0f08d5e98f1721597c1"
+    },
+    {
+      "name": "0013_batch_management.sql",
+      "sha256_as_applied": "f75a78ac4deb18ca51578c6d9b6522241c36cc7cb9d1bdad9d713f8c3d83082f",
+      "sha256_lf": "b2b358d448a443fd42c0373f1f89b46806bb3d75222b18482db66ce6b20b89b5"
+    },
+    {
+      "name": "0014_presale_leads.sql",
+      "sha256_as_applied": "6cd207ab6ad330ad0b758049c388d1c54540b1c09c96a37fafa901e33ca3b9db",
+      "sha256_lf": "2422dc9202e1354214d653d5994c0fdeaa200d11291749cdd769467d01ad17d6"
+    },
+    {
+      "name": "0015_telemetry_retention_index.sql",
+      "sha256_as_applied": "8988b89f6321761a287e8d94de3a5d690f7d7cd71107ef3ae71b217b3e49ca2e",
+      "sha256_lf": "1780b7e06108f5d3eee9bea95c1dd26fadad63bead4af5f35e0fa6af789813f7"
+    },
+    {
+      "name": "0016_d1_health_daily.sql",
+      "sha256_as_applied": "e5fa91c04b6de333e22d5060fd246ef788e71fa31c9b7392414ff1fa83935ab0",
+      "sha256_lf": "edffd308e663549d5eefe26a5300cc1671b7bc57b4ef0a2e1bcdbd7226415361"
+    },
+    {
+      "name": "0017_intelligent_history.sql",
+      "sha256_as_applied": "4a946da5e36129b4f995cc79b1a3e2569a3e1e9d1889c3182baf82a08f1291a8",
+      "sha256_lf": "82a1c0888050ec0cf714f05e823c1e1c0887e102e23375a92b4195a01f2c24f0"
+    },
+    {
+      "name": "0018_organization_history_plans.sql",
+      "sha256_as_applied": "d47a6617679bba9507212609ee01a36d3f42fa404cb0caf94762395b70a7a9b2",
+      "sha256_lf": "26ba7fc7b7fc2fc8c874dc614b016b394883f43a2354c25af71a87adec88540d"
+    }
+  ],
+  "applied_migrations": [
+    {
+      "id": 1,
+      "name": "0001_initial.sql",
+      "applied_at": "2026-11-10 23:51:49"
+    },
+    {
+      "id": 2,
+      "name": "0002_device_commands.sql",
+      "applied_at": "2026-11-10 23:51:49"
+    },
+    {
+      "id": 3,
+      "name": "0003_cloud_recipes.sql",
+      "applied_at": "2026-11-10 23:51:50"
+    },
+    {
+      "id": 4,
+      "name": "0004_device_configuration.sql",
+      "applied_at": "2026-11-10 23:51:50"
+    },
+    {
+      "id": 5,
+      "name": "0005_fermentation_tracking.sql",
+      "applied_at": "2026-11-10 23:51:50"
+    },
+    {
+      "id": 6,
+      "name": "0006_sales_leads.sql",
+      "applied_at": "2026-11-10 23:51:51"
+    },
+    {
+      "id": 7,
+      "name": "0007_user_signup.sql",
+      "applied_at": "2026-11-10 23:51:51"
+    },
+    {
+      "id": 8,
+      "name": "0008_system_admins.sql",
+      "applied_at": "2026-11-10 23:51:51"
+    },
+    {
+      "id": 9,
+      "name": "0009_device_preferences.sql",
+      "applied_at": "2026-11-10 23:51:52"
+    },
+    {
+      "id": 10,
+      "name": "0010_notification_center.sql",
+      "applied_at": "2026-11-10 23:51:52"
+    },
+    {
+      "id": 11,
+      "name": "0011_notification_dismissals.sql",
+      "applied_at": "2026-11-10 23:51:52"
+    },
+    {
+      "id": 12,
+      "name": "0012_managed_ota.sql",
+      "applied_at": "2026-11-10 23:51:53"
+    },
+    {
+      "id": 13,
+      "name": "0013_batch_management.sql",
+      "applied_at": "2026-11-10 23:51:53"
+    },
+    {
+      "id": 14,
+      "name": "0014_presale_leads.sql",
+      "applied_at": "2026-11-10 23:51:53"
+    },
+    {
+      "id": 15,
+      "name": "0015_telemetry_retention_index.sql",
+      "applied_at": "2026-11-10 23:51:53"
+    },
+    {
+      "id": 16,
+      "name": "0016_d1_health_daily.sql",
+      "applied_at": "2026-11-10 23:51:54"
+    },
+    {
+      "id": 17,
+      "name": "0017_intelligent_history.sql",
+      "applied_at": "2026-11-10 23:51:54"
+    },
+    {
+      "id": 18,
+      "name": "0018_organization_history_plans.sql",
+      "applied_at": "2026-11-10 23:51:54"
+    }
+  ],
+  "pending_migrations": [],
+  "schema_validation": {
+    "application_tables": 36,
+    "explicit_indexes": 40,
+    "views": 0,
+    "triggers": 0,
+    "ddl_comparison": "All table/index DDL token-equivalent to local SQLite replay of the same 18 files; includes columns, PK/FK/CHECK/UNIQUE and partial index predicates",
+    "missing_objects": [],
+    "unexpected_application_objects": [],
+    "ddl_mismatches": [],
+    "quick_check": "ok",
+    "foreign_key_violations": [],
+    "application_row_counts": [
+      {
+        "table_name": "audit_log",
+        "row_count": 0
+      },
+      {
+        "table_name": "batch_attachments",
+        "row_count": 0
+      },
+      {
+        "table_name": "batch_ingredients",
+        "row_count": 0
+      },
+      {
+        "table_name": "batch_journal",
+        "row_count": 0
+      },
+      {
+        "table_name": "cloud_recipe_stages",
+        "row_count": 0
+      },
+      {
+        "table_name": "cloud_recipes",
+        "row_count": 0
+      },
+      {
+        "table_name": "d1_health_daily",
+        "row_count": 0
+      },
+      {
+        "table_name": "device_commands",
+        "row_count": 0
+      },
+      {
+        "table_name": "device_configurations",
+        "row_count": 0
+      },
+      {
+        "table_name": "device_credentials",
+        "row_count": 0
+      },
+      {
+        "table_name": "device_latest_state",
+        "row_count": 0
+      },
+      {
+        "table_name": "devices",
+        "row_count": 0
+      },
+      {
+        "table_name": "fermentation_readings",
+        "row_count": 0
+      },
+      {
+        "table_name": "fermentation_sessions",
+        "row_count": 0
+      },
+      {
+        "table_name": "firmware_releases",
+        "row_count": 0
+      },
+      {
+        "table_name": "history_5min",
+        "row_count": 0
+      },
+      {
+        "table_name": "history_hourly",
+        "row_count": 0
+      },
+      {
+        "table_name": "history_rollup_watermarks",
+        "row_count": 0
+      },
+      {
+        "table_name": "notification_deliveries",
+        "row_count": 0
+      },
+      {
+        "table_name": "notification_dismissals",
+        "row_count": 0
+      },
+      {
+        "table_name": "notification_preferences",
+        "row_count": 0
+      },
+      {
+        "table_name": "notification_reads",
+        "row_count": 0
+      },
+      {
+        "table_name": "notification_states",
+        "row_count": 0
+      },
+      {
+        "table_name": "notifications",
+        "row_count": 0
+      },
+      {
+        "table_name": "organization_history_plans",
+        "row_count": 0
+      },
+      {
+        "table_name": "organization_members",
+        "row_count": 0
+      },
+      {
+        "table_name": "organizations",
+        "row_count": 0
+      },
+      {
+        "table_name": "ota_assignments",
+        "row_count": 0
+      },
+      {
+        "table_name": "ota_campaigns",
+        "row_count": 0
+      },
+      {
+        "table_name": "ota_events",
+        "row_count": 0
+      },
+      {
+        "table_name": "sales_lead_events",
+        "row_count": 0
+      },
+      {
+        "table_name": "sales_leads",
+        "row_count": 0
+      },
+      {
+        "table_name": "sessions",
+        "row_count": 0
+      },
+      {
+        "table_name": "system_admins",
+        "row_count": 0
+      },
+      {
+        "table_name": "telemetry",
+        "row_count": 0
+      },
+      {
+        "table_name": "users",
+        "row_count": 0
+      }
+    ],
+    "total_application_rows": 0,
+    "validation_rows_written": 0
+  },
+  "events": [
+    {
+      "stage": "read-only validation",
+      "issue": "Compound SELECT count queries rejected with Cloudflare code 7500; Wrangler/Node Windows also asserted while closing after API error",
+      "resolution": "Used simple count statements and separate schema/PRAGMA queries; all passed. Migrations were not reapplied."
+    }
+  ],
+  "main_merged": false,
+  "deploy_executed": false,
+  "r2_or_other_d1_modified": false,
+  "secrets_created": false,
+  "dns_or_access_changed": false,
+  "remaining": [
+    "New staging secrets and test accounts",
+    "Audit Access/DNS and approved identities",
+    "Private Worker publication and own DO namespace",
+    "Protected hostname activation and api-staging cutover",
+    "Remote browser/device-simulator validation"
+  ]
+}

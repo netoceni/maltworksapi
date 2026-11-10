@@ -1,8 +1,8 @@
 # Staging completo de Admin + Cloud + API — preparação de 10/11/2026
 
-Status: configurações preparadas e D1/R2 exclusivos criados em 10/11/2026, por
-autorização específica do usuário. Nenhuma migração remota foi aplicada e nenhum
-Worker foi publicado. O banco ainda não tem schema da aplicação.
+Status: configurações preparadas, D1/R2 exclusivos criados e migrations 0001–0018
+aplicadas somente ao D1 de staging autorizado. Schema validado, sem dados da aplicação.
+Nenhum Worker foi publicado e a main continua sem merge.
 API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 `netoceni/maltworkspanel`. As branches `prepare/full-staging-20261110` não alteram a main.
 
@@ -11,7 +11,7 @@ API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 | Componente | Recurso exclusivo | Situação / ação futura |
 | --- | --- | --- |
 | API completa | Worker `maltworks-api-staging` | Publicar código da integração com config própria |
-| Banco | D1 `maltworks-app-staging` | Criado: `5151e251-52c1-4406-8ae9-c6d38961d124`; migrations 0001–0018 ainda pendentes |
+| Banco | D1 `maltworks-app-staging` | `5151e251-52c1-4406-8ae9-c6d38961d124`; 0001–0018 aplicadas e schema validado |
 | Tempo real | DO SQLite `RealtimeHub` do novo Worker | Criado na primeira publicação pela migration `v1-realtime-app-staging` |
 | Firmware de teste | R2 privado `maltworks-staging-firmware` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
 | Anexos de lotes | R2 privado `maltworks-staging-batch-files` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
@@ -28,10 +28,29 @@ Não copiar dados pessoais, firmware publicado, senhas, sessões ou credenciais 
 Inventário verificado: [staging-resources-20261110.json](staging-resources-20261110.json).
 Conta e nomes foram conferidos antes de cada criação; o novo UUID não existia no
 inventário anterior. D1 e buckets ficaram em ENAM; R2 usa classe Standard, e a
-replicação de leitura D1 está desativada. Uma consulta SELECT no banco novo encontrou
-somente `_cf_KV`, tabela interna do Cloudflare: `rows_written=0`, `changed_db=false`,
-sem tabelas de aplicação ou de migrations. Não foi usado `migrations list/apply`.
-Os buckets estão vazios e privados, confirmados por metadados, r2.dev e lista de domínios.
+replicação de leitura D1 está desativada. Na verificação da criação, o banco tinha
+somente `_cf_KV`, sem schema da aplicação ou migrations. Os buckets foram confirmados
+vazios e privados por metadados, r2.dev e lista de domínios; não foram alterados na
+etapa posterior de migrations.
+
+As migrations 0001–0018 foram aplicadas após nova autorização específica. Conta,
+permissão D1, nome/UUID e os hashes dos 18 arquivos foram conferidos imediatamente
+antes da operação. Foi usada somente a config privada e o banco `maltworks-app-staging`
+na conta `4e8c08f70722d344cf39c362a110d706`; não foi usado o script npm remoto de produção.
+Não há migrations pendentes. A validação comparou o DDL de todas as 36 tabelas de
+aplicação e 40 índices explícitos com o schema produzido pelos mesmos arquivos em
+SQLite local, incluindo colunas, PK/FK/CHECK/UNIQUE e predicados de índices parciais:
+nenhuma divergência, objeto ausente ou objeto inesperado. `PRAGMA quick_check=ok`,
+`foreign_key_check` sem violações e zero registros em todas as tabelas da aplicação.
+As consultas de validação tiveram `rows_written=0`.
+
+Evidências: [staging-migrations-0001-0018.json](staging-migrations-0001-0018.json), com
+hashes, nomes e horários das 18 migrations, comparação e contagens. Consultas de
+contagem com UNION ALL foram recusadas pelo D1 (7500); contagens simples e PRAGMAs
+separados passaram. O Wrangler/Node no Windows também apresentou uma falha ao encerrar
+após esses erros de consulta. As migrations não foram reaplicadas, e nenhum desses
+erros de leitura alterou schema/dados. Nenhum usuário, administrador ou dispositivo
+foi cadastrado; esse estado inicial ainda precisa ser preparado em etapa autorizada.
 
 A primeira tentativa do bucket de anexos retornou erro interno Cloudflare 10001.
 Uma nova listagem confirmou que ele não existia; uma única repetição criou o bucket.
@@ -178,7 +197,7 @@ Sem expiração, o banco cresce: acompanhar uso e volume dos simuladores.
 Não desligar os limites de segurança dos scripts antigos do Lab para fazê-los
 aceitar a nova pilha.
 
-## Sequência de ativação — somente D1/R2 criados até aqui
+## Sequência de ativação — D1/R2 e migrations concluídos
 
 1. Revisar PRs e CI, reconciliar código de integração e registrar SHAs aprovados.
    Auditar no painel eventuais Workers Builds/Git integrations que possam publicar
@@ -190,9 +209,10 @@ aceitar a nova pilha.
    Config privada da API gerada localmente com o UUID real. Reconfirmar conta/IDs
    e revisar essa config antes de qualquer próxima operação. Não recriar recursos
    por seguirem ausentes do Lab ou de uma lista consultada em outra conta.
-4. Aplicar as 18 migrations somente ao novo `DB`, usando explicitamente a config
-   `wrangler.app-staging.jsonc`; consultar a lista aplicada nesse banco. Nunca usar
-   o script npm `db:migrate:remote` padrão (seleciona produção).
+4. **Concluído: 0001–0018 aplicadas e schema validado** exclusivamente no novo D1
+   `5151e251-52c1-4406-8ae9-c6d38961d124`, com `wrangler.app-staging.jsonc`.
+   Não reaplicar manualmente nem usar `db:migrate:remote` padrão (seleciona produção).
+   Qualquer futura migration fora desse intervalo precisa de autorização própria.
 5. Preparar novos secrets e publicar os três Workers com configs privadas;
    a primeira publicação da API cria o namespace DO próprio. Não executar scripts
    npm `deploy` padrão. Confirmar metadados e ausência de URLs públicas.
@@ -256,10 +276,11 @@ sobrescritos. A geração lê a estrutura da config, não confirma IDs remotos.
 
 Após a incorporação do Cloud #13 ao #12, a pendência de dependências deixa de
 bloquear a preparação desse conjunto. A criação do D1/R2 também foi concluída.
-Continuam pendentes auditoria DNS/Access, secrets e contas de teste, migrations no
-banco novo, publicação privada e namespace DO, proteção/ativação dos domínios e
+As migrations 0001–0018 no banco novo também estão concluídas e validadas.
+Continuam pendentes auditoria DNS/Access, secrets e contas de teste,
+publicação privada e namespace DO, proteção/ativação dos domínios e
 transferência de `api-staging`, seguida de validação com controladores simulados.
-Somente D1/R2 foram criados, sem migrations, deploy ou merge na main. O checklist
+Não houve deploy, merge na main ou alteração de outro D1/R2. O checklist
 do Cloud está em [staging.md](https://github.com/netoceni/maltworkspanel/blob/prepare/full-staging-20261110/docs/staging.md).
 
 Referências oficiais: [configuração Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/),

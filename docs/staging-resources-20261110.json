@@ -1,8 +1,7 @@
 {
-  "checked_at": "2026-11-10T23:44:01.255Z",
+  "checked_at": "2026-11-10T23:56:31.622513+00:00",
   "account_id": "4e8c08f70722d344cf39c362a110d706",
   "cli": "project-local Wrangler 4.118.0",
-  "authorization": "User authorized only staging D1 and R2 creation; no migrations, main merge or deployment",
   "credential_source": "Existing Wrangler OAuth; whoami/account and inventories checked before creation; no auth changes",
   "d1": {
     "name": "maltworks-app-staging",
@@ -12,7 +11,7 @@
     "region": "ENAM",
     "read_replication": "disabled",
     "reported_size_bytes": 12288,
-    "schema_read": {
+    "creation_schema_read": {
       "tables_and_views": [
         {
           "name": "_cf_KV",
@@ -24,7 +23,35 @@
       "application_schema_present": false,
       "migrations_table_present": false
     },
-    "migrations_applied_by_this_task": []
+    "schema_validation": {
+      "application_tables": 36,
+      "explicit_indexes": 40,
+      "ddl_mismatches": [],
+      "quick_check": "ok",
+      "total_application_rows": 0
+    },
+    "applied_migrations": [
+      "0001_initial.sql",
+      "0002_device_commands.sql",
+      "0003_cloud_recipes.sql",
+      "0004_device_configuration.sql",
+      "0005_fermentation_tracking.sql",
+      "0006_sales_leads.sql",
+      "0007_user_signup.sql",
+      "0008_system_admins.sql",
+      "0009_device_preferences.sql",
+      "0010_notification_center.sql",
+      "0011_notification_dismissals.sql",
+      "0012_managed_ota.sql",
+      "0013_batch_management.sql",
+      "0014_presale_leads.sql",
+      "0015_telemetry_retention_index.sql",
+      "0016_d1_health_daily.sql",
+      "0017_intelligent_history.sql",
+      "0018_organization_history_plans.sql"
+    ],
+    "pending_migrations": [],
+    "migration_evidence": "staging-migrations-0001-0018.json"
   },
   "r2": [
     {
@@ -36,7 +63,8 @@
       "object_count": 0,
       "reported_size": "0 B",
       "r2_dev_enabled": false,
-      "custom_domains": []
+      "custom_domains": [],
+      "verified_at": "2026-11-10T23:44:01.255Z"
     },
     {
       "name": "maltworks-staging-batch-files",
@@ -47,7 +75,8 @@
       "object_count": 0,
       "reported_size": "0 B",
       "r2_dev_enabled": false,
-      "custom_domains": []
+      "custom_domains": [],
+      "verified_at": "2026-11-10T23:44:01.255Z"
     }
   ],
   "existing_resources": {
@@ -89,11 +118,13 @@
   "secrets_created": false,
   "dns_or_access_changed": false,
   "remaining": [
-    "Apply 0001–0018 only after separate authorization",
     "New staging secrets and test accounts",
     "Audit Access/DNS and approved identities",
     "Private Worker publication and own DO namespace",
     "Protected hostname activation and api-staging cutover",
     "Remote browser/device-simulator validation"
-  ]
+  ],
+  "creation_checked_at": "2026-11-10T23:44:01.255Z",
+  "creation_authorization": "User authorized only staging D1 and R2 creation; no migrations, main merge or deployment",
+  "authorization": "Exactly migrations 0001-0018 on staging 5151e251-52c1-4406-8ae9-c6d38961d124; no main merge or deployment"
 }
