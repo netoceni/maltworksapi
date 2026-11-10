@@ -13,3 +13,7 @@ lab-*.jsonl
 
 # Never commit one-off D1 database IDs or test credentials
 wrangler.retention-disposable.jsonc
+
+# Reviewed, generated full-staging config (never secrets)
+wrangler.app-staging.jsonc
+.dev.vars.app-staging

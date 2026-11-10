@@ -590,7 +590,7 @@ async function deliverOneEmail(
       to: recipient.email,
       subject: `[Maltworks] ${notification.title}`,
       text: `${recipient.displayName},\n\n${notification.message}\n\nAbra o painel Maltworks para ver os detalhes.`,
-      html: `<p>${escapeHtml(recipient.displayName)},</p><p>${escapeHtml(notification.message)}</p><p><a href="https://app.maltworks.com.br">Abrir o painel Maltworks</a></p>`,
+      html: `<p>${escapeHtml(recipient.displayName)},</p><p>${escapeHtml(notification.message)}</p><p><a href="${escapeHtml(env.APP_ORIGIN)}">Abrir o painel Maltworks</a></p>`,
     });
     await updateDelivery(env.DB, notification.id, recipient.userId, "sent", response.messageId, null, now);
   } catch (error) {

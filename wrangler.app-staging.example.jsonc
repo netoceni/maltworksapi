@@ -1,0 +1,71 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maltworks-api-staging",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "vars": {
+    "APP_ORIGIN": "https://app-staging.maltworks.com.br",
+    "ADMIN_ORIGIN": "https://admin-staging.maltworks.com.br",
+    "SESSION_TTL_DAYS": "1",
+    "D1_BILLING_PLAN": "paid",
+    "TELEMETRY_PERSIST_INTERVAL_SECONDS": "180",
+    "TELEMETRY_RETENTION_DAYS": "0",
+    "HISTORY_5MIN_RETENTION_DAYS": "0",
+    "HISTORY_HOURLY_RETENTION_DAYS": "0",
+    "LAB_STAGING_ROLLUP_ONLY": "true",
+    "LAB_STAGING_ENABLE_RETENTION": "false"
+  },
+  "r2_buckets": [
+    {
+      "binding": "FIRMWARE",
+      "bucket_name": "maltworks-staging-firmware"
+    },
+    {
+      "binding": "BATCH_FILES",
+      "bucket_name": "maltworks-staging-batch-files"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-realtime-app-staging",
+      "new_sqlite_classes": [
+        "RealtimeHub"
+      ]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "maltworks-app-staging",
+      "database_id": "REPLACE_WITH_NEW_FULL_STAGING_D1_UUID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
+  "account_id": "4e8c08f70722d344cf39c362a110d706"
+}
