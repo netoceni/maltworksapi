@@ -98,7 +98,7 @@ describe("cloud recipe plan gates (simulated devices, real isolated HTTP/D1)", (
       await denied(await call(a, "/v1/recipes/" + missing, "PUT", input));
       await denied(await call(a, "/v1/recipes/" + missing, "DELETE"));
       await denied(await call(a, `/v1/devices/${d.id}/commands/profile`, "POST", { action: "start", recipeId: missing, plan: "pro" }));
-      await denied(await call(a, `/v1/devices/${d.id}/fermentation`, "POST", { name: "Batch QA", originalGravity: 1.05, recipeId: missing }));
+      await denied(await call(a, `/v1/devices/${d.id}/fermentation`, "POST", { name: "Batch QA", originalGravity: 1.05, recipeId: missing }), "BATCH_PLAN_REQUIRED");
       expect(await state(a)).toEqual(before);
       // Basic device controls and telemetry do not require a recipe entitlement.
       expect((await call(a, `/v1/devices/${d.id}/commands/setpoint`, "POST", { setpoint: 18 })).status).toBe(202);
@@ -114,7 +114,9 @@ describe("cloud recipe plan gates (simulated devices, real isolated HTTP/D1)", (
       expect(updated.status).toBe(200);
       expect(await updated.json()).toMatchObject({ recipe: { id, version: 2, name: "Updated QA" } });
       expect((await call(a, `/v1/devices/${d.id}/commands/profile`, "POST", { action: "start", recipeId: id })).status).toBe(202);
-      expect((await call(a, `/v1/devices/${d.id}/fermentation`, "POST", { name: "Batch QA", originalGravity: 1.05, recipeId: id })).status).toBe(201);
+      const associated = await call(a, `/v1/devices/${d.id}/fermentation`, "POST", { name: "Batch QA", originalGravity: 1.05, recipeId: id });
+      if (plan === "pro") expect(associated.status).toBe(201);
+      else await denied(associated, "BATCH_PLAN_REQUIRED");
       expect((await call(a, "/v1/recipes/" + id, "DELETE")).status).toBe(200);
       expect(await env.DB.prepare("SELECT 1 FROM cloud_recipe_stages WHERE recipe_id = ?1").bind(id).first()).toBeNull();
     });
@@ -126,6 +128,7 @@ describe("cloud recipe plan gates (simulated devices, real isolated HTTP/D1)", (
     await denied(await call(a, "/v1/recipes?organizationId=" + b.id), "ORGANIZATION_ACCESS_DENIED");
     expect((await call(a, `/v1/devices/${d.id}/commands/profile`, "POST", { action: "start", recipeId: id })).status).toBe(404);
     expect((await call(a, `/v1/devices/${own.id}/commands/profile`, "POST", { action: "start", recipeId: id })).status).toBe(404);
+    await setPlan(a.id, "pro");
     expect((await call(a, `/v1/devices/${own.id}/fermentation`, "POST", { name: "Foreign recipe QA", originalGravity: 1.05, recipeId: id })).status).toBe(404);
     await env.DB.prepare("UPDATE organization_members SET role = 'viewer' WHERE organization_id = ?1").bind(b.id).run();
     expect((await call(b, "/v1/recipes")).status).toBe(200);

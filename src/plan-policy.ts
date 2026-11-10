@@ -7,25 +7,30 @@ export interface PlanEntitlements {
   readonly plan: PlanCode;
   readonly maxControllers: number;
   readonly canUseRecipes: boolean;
+  readonly canUseBatches: boolean;
+  readonly canUseDensity: boolean;
   readonly maxRangeSeconds: number;
   readonly canUseFiveMinuteArchive: boolean;
   readonly canUseHourlyArchive: boolean;
 }
 
-// Pilot grants, not billing terms. Keep shipped controller/history/recipe policy in
-// one place; other commercial features still require explicit API gates (#23).
+// Pilot grants, not billing terms. Keep shipped entitlements in one place;
+// remaining commercial features still require explicit API gates (#23).
 export const PLAN_POLICY = Object.freeze({
   essential: Object.freeze({
     plan: "essential", maxControllers: 1, maxRangeSeconds: 7 * PLAN_SECONDS_PER_DAY,
     canUseFiveMinuteArchive: false, canUseHourlyArchive: false, canUseRecipes: false,
+    canUseBatches: false, canUseDensity: false,
   }),
   plus: Object.freeze({
     plan: "plus", maxControllers: 2, maxRangeSeconds: 90 * PLAN_SECONDS_PER_DAY,
     canUseFiveMinuteArchive: true, canUseHourlyArchive: false, canUseRecipes: true,
+    canUseBatches: false, canUseDensity: false,
   }),
   pro: Object.freeze({
     plan: "pro", maxControllers: 5, maxRangeSeconds: 365 * PLAN_SECONDS_PER_DAY,
     canUseFiveMinuteArchive: true, canUseHourlyArchive: true, canUseRecipes: true,
+    canUseBatches: true, canUseDensity: true,
   }),
 } satisfies Record<PlanCode, PlanEntitlements>);
 
@@ -58,5 +63,19 @@ export async function requireOrganizationRecipes(db: D1Database, organizationId:
   const entitlements = await organizationPlanEntitlements(db, organizationId);
   if (!entitlements.canUseRecipes) {
     throw new ApiError(403, "RECIPE_PLAN_REQUIRED", "Receitas na nuvem requerem o plano Plus ou Pro.");
+  }
+}
+
+// Batch records contain gravity readings/metrics; both currently belong to Pro.
+// Separate flags keep the product policy explicit without altering device control.
+export async function requireOrganizationBatches(db: D1Database, organizationId: string): Promise<void> {
+  if (!(await organizationPlanEntitlements(db, organizationId)).canUseBatches) {
+    throw new ApiError(403, "BATCH_PLAN_REQUIRED", "Lotes requerem o plano Pro.");
+  }
+}
+
+export async function requireOrganizationDensity(db: D1Database, organizationId: string): Promise<void> {
+  if (!(await organizationPlanEntitlements(db, organizationId)).canUseDensity) {
+    throw new ApiError(403, "DENSITY_PLAN_REQUIRED", "Densidade requer o plano Pro.");
   }
 }

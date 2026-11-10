@@ -612,6 +612,9 @@ describe("Maltworks Cloud API 5.19.0", () => {
     );
     expect(pauseProfile.status).toBe(202);
 
+    // Lotes/densidade require Pro; the earlier recipe scenario intentionally uses Plus.
+    await env.DB.prepare("UPDATE organization_history_plans SET plan_code = 'pro' WHERE organization_id = (SELECT organization_id FROM devices WHERE id = ?1)")
+      .bind(deviceId).run();
     const fermentationStartedAt = Math.floor(Date.now() / 1000) - 3600;
     const startFermentation = await exports.default.fetch(
       `https://api.maltworks.com.br/v1/devices/${deviceId}/fermentation`,

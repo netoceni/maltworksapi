@@ -4,11 +4,11 @@ This increment implements the controller claim portion of API issue #23.
 `src/plan-policy.ts` is the immutable server policy for the shipped controller
 quota and history entitlements; history callers keep their existing exports.
 
-| Plan | Linked controllers | History range | Aggregate access | Cloud recipes |
-| --- | ---: | ---: | --- | --- |
-| Essencial (`essential`) | 1 | 7 days | Raw only | No |
-| Plus (`plus`) | 2 | 90 days | Five-minute | Yes |
-| Pro (`pro`) | 5 | 365 days | Five-minute and hourly | Yes |
+| Plan | Linked controllers | History range | Aggregate access | Cloud recipes | Batches / density |
+| --- | ---: | ---: | --- | --- | --- |
+| Essencial (`essential`) | 1 | 7 days | Raw only | No | No |
+| Plus (`plus`) | 2 | 90 days | Five-minute | Yes | No |
+| Pro (`pro`) | 5 | 365 days | Five-minute and hourly | Yes | Yes |
 
 ## Grants and enforcement
 
@@ -74,7 +74,7 @@ The lockfile was not upgraded. Installation reported 11 dependency advisories
 
 ## Remaining inconsistencies / commercial gates
 
-- Fermentation/batches, density, exports and notifications do not yet
+- Exports and notifications do not yet
   have a complete centrally enforced commercial policy. Their product semantics,
   API gates and expired-subscription behavior remain work in #23.
 - Raw `/v1/devices/:id/telemetry` now applies the same history plan windows as
@@ -161,9 +161,9 @@ read/delete; existing recipes/stages remain stored for a later upgrade.
 Two other entry points use a cloud recipe: starting a new device profile and
 associating a recipe when starting a fermentation record. Both now require the
 same entitlement, preventing recipe-ID access from bypassing the library gate.
-Existing batch snapshots are historical records, not newly authorized library
-access; reading them is unchanged. Comprehensive batch/density gates remain
-separate work in #23, and Plus recipe access does not pre-decide their tiers.
+Existing batch snapshots are historical records, not library access. The batch/
+density follow-up below now restricts their parent endpoints to Pro. Plus recipe
+access alone does not grant batch or density access.
 
 The gate authorizes new requests; it does not cancel commands accepted before a
 downgrade or interrupt profiles already on a controller. Telemetry, command
@@ -187,3 +187,52 @@ History helpers project only their existing fields to preserve their return shap
 This recipe increment is stacked on API #25. Review its isolated diff, then
 retarget and rerun CI after dependencies are handled in a separately authorized
 release process. No merge, deploy or remote migration was performed.
+
+## Batches and density follow-up (development only)
+
+Central `canUseBatches` and `canUseDensity` flags are true only for Pro. Missing,
+revoked or unrecognized grants default to Essencial. New requests read the
+selected organization's current D1 grant; body/query flags cannot override it.
+There are still no real devices running. All checks use simulated controllers
+and isolated D1/R2; no hardware or deployed environment was exercised.
+
+| Endpoint group | Gate | Denial |
+| --- | --- | --- |
+| Batch list, detail, update and compare | Pro batches | 403 BATCH_PLAN_REQUIRED |
+| Ingredient and journal additions/deletions | Pro batches | 403 BATCH_PLAN_REQUIRED |
+| Attachment upload, download and delete | Pro batches, before R2 access | 403 BATCH_PLAN_REQUIRED |
+| Device fermentation get, start and finish | Pro batches | 403 BATCH_PLAN_REQUIRED |
+| Device gravity reading add/delete | Pro density | 403 DENSITY_PLAN_REQUIRED |
+
+Batch detail/list/compare and fermentation responses include gravity or derived
+metrics, so their whole endpoints require Pro; there is no free summary exposing
+paid data. Writes through `finalGravity`, `plannedFinalGravity` and finish payloads
+are covered by the same batch gate. Starting without a recipe is also gated.
+Plus retains library CRUD/new recipe profiles but cannot attach a recipe to a
+new batch because starting any batch requires Pro. Existing recipe tests now
+assert this distinction; the broad API test explicitly grants Pro at its batch
+scenario while preserving Plus for its earlier recipe scenario.
+
+After downgrade/revocation, all batch/density reads and writes (including cloud
+finish and historical recipe snapshots inside batch records) are blocked. The
+system retains records, readings, ingredients, journal and attachment objects;
+a Pro regrant restores access. No automatic deletion, finishing or command
+cancellation occurs. Cloud fermentation finish only updates a record, not a
+controller profile. Device telemetry, basic setpoint/control and profile
+pause/resume/stop keep their existing authorization/safety rules independently.
+As with recipes, requests authorized before a concurrent grant change can finish;
+subsequent requests use the new grant. Subscription expiry is not invented here.
+
+Seven new tests cover all 16 endpoint/method combinations for missing/revoked,
+Essencial and Plus grants, including direct API overrides and comparisons. D1
+row/audit snapshots and R2 keys/content remain unchanged on denial. Pro lifecycle,
+metrics, readings, attachments and child CRUD, viewer write restrictions, foreign
+organizations, session requirements, explicit organization selection and restored
+access are checked. A simulated profile accepted before downgrade still receives
+telemetry delivery/ack and pause/resume/stop, and basic setpoint remains available.
+Existing full API/recipe/history/quota regressions remain part of the suite.
+
+This increment is stacked on API #26. No schema, ingestion, commands, credentials,
+retention, Worker configuration or workflow was changed. No remote SQL, deployment
+or merge was performed. Exports, notifications, subscription lifecycle and firmware
+clearance remain separate work; issue #23 is not closed by this increment.
