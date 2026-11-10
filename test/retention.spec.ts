@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   D1_STORAGE_WARNING_BYTES,
+  d1BillingPlan,
   RETENTION_BATCH_SIZE,
   pruneExpiredTelemetry,
   runTelemetryRetention,
@@ -12,6 +13,9 @@ import {
 describe("raw telemetry retention", () => {
   it("validates retention policy and cron cadence", () => {
     expect(telemetryRetentionDays(undefined)).toBe(7);
+    expect(d1BillingPlan(undefined)).toBe("free");
+    expect(d1BillingPlan("paid")).toBe("paid");
+    expect(() => d1BillingPlan("enterprise")).toThrow();
     expect(telemetryRetentionDays("30")).toBe(30);
     expect(telemetryRetentionDays("0")).toBe(0);
     expect(() => telemetryRetentionDays("-1")).toThrow();
@@ -114,6 +118,11 @@ describe("raw telemetry retention", () => {
         "Telemetry retention batch at capacity",
         expect.objectContaining({ batchSize: RETENTION_BATCH_SIZE }),
       );
+      warn.mockClear();
+      const paid = { DB: db, TELEMETRY_RETENTION_DAYS: "7", D1_BILLING_PLAN: "paid" } as unknown as Env;
+      expect(await runTelemetryRetention(paid, 1_800_000_000_000)).toBe(RETENTION_BATCH_SIZE);
+      expect(warn).not.toHaveBeenCalledWith("D1 storage approaching free-tier capacity", expect.anything());
+      expect(warn).not.toHaveBeenCalledWith("D1 storage approaching Paid included capacity", expect.anything());
     } finally {
       warn.mockRestore();
       info.mockRestore();

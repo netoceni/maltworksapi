@@ -22,10 +22,14 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Audit patched dependency tree
+        run: npm audit --audit-level=moderate
       - name: Check TypeScript
         run: npm run check
       - name: Run tests against isolated D1
         run: npm test
+      - name: Verify patched emulator dependencies
+        run: node --test scripts/dependency-compatibility.spec.mjs
       - name: Test internal Maltworks Lab and staging security gates
         run: node --test scripts/maltworks-lab*.spec.mjs
       - name: Smoke-test local SQLite fleet simulator
@@ -70,6 +74,8 @@ jobs:
           node --check scripts/maltworks-lab.mjs
       - name: Run all Worker tests, including Lab contract and WebSocket regressions
         run: npm test
+      - name: Verify patched emulator dependencies
+        run: node --test scripts/dependency-compatibility.spec.mjs
       - name: Test internal Maltworks Lab and staging security gates
         run: node --test scripts/maltworks-lab*.spec.mjs
       - name: Regression for an unresponsive WebSocket close handshake

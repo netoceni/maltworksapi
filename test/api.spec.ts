@@ -505,6 +505,12 @@ describe("Maltworks Cloud API 5.19.0", () => {
     };
     expect((await sendTelemetry(alarmAcknowledgedTelemetry)).status).toBe(200);
 
+    // This regression covers premium recipes as well as basic device control.
+    // Grant Plus explicitly; new organizations otherwise default to Essencial.
+    await env.DB.prepare(`INSERT INTO organization_history_plans (organization_id, plan_code, updated_at)
+      SELECT organization_id, 'plus', ?2 FROM devices WHERE id = ?1`)
+      .bind(deviceId, Math.floor(Date.now() / 1000)).run();
+
     const createRecipe = await exports.default.fetch(
       "https://api.maltworks.com.br/v1/recipes",
       {
@@ -606,6 +612,9 @@ describe("Maltworks Cloud API 5.19.0", () => {
     );
     expect(pauseProfile.status).toBe(202);
 
+    // Lotes/densidade require Pro; the earlier recipe scenario intentionally uses Plus.
+    await env.DB.prepare("UPDATE organization_history_plans SET plan_code = 'pro' WHERE organization_id = (SELECT organization_id FROM devices WHERE id = ?1)")
+      .bind(deviceId).run();
     const fermentationStartedAt = Math.floor(Date.now() / 1000) - 3600;
     const startFermentation = await exports.default.fetch(
       `https://api.maltworks.com.br/v1/devices/${deviceId}/fermentation`,

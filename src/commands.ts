@@ -1,6 +1,7 @@
 import { requireSession, selectOrganization } from "./auth";
 import { jsonResponse, readJson } from "./http";
 import { recipeById } from "./recipes";
+import { requireOrganizationRecipes } from "./plan-policy";
 import { ApiError, type CommandResult, type SessionContext } from "./types";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
@@ -99,6 +100,7 @@ export async function createProfileCommand(
   const action = typeof raw.action === "string" ? raw.action.trim().toLowerCase() : "";
 
   if (action === "start") {
+    await requireOrganizationRecipes(env.DB, context.organizationId);
     if (context.profile.active) {
       throw new ApiError(409, "PROFILE_ALREADY_ACTIVE", "Ja existe um perfil ativo no controlador.");
     }

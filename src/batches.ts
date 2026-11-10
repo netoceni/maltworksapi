@@ -1,5 +1,6 @@
 import { requireSession, selectOrganization } from "./auth";
 import { jsonResponse, readJson } from "./http";
+import { requireOrganizationBatches } from "./plan-policy";
 import { ApiError, type SessionContext } from "./types";
 
 const BATCH_ID_PATTERN = /^fer_[0-9a-f]{32}$/u;
@@ -55,6 +56,7 @@ interface IngredientRow {
 export async function listBatches(request: Request, env: Env, requestId: string): Promise<Response> {
   const session = await requireSession(request, env);
   const organizationId = selectOrganization(session, new URL(request.url).searchParams.get("organizationId"));
+  await requireOrganizationBatches(env.DB, organizationId);
   const result = await env.DB.prepare(`${batchSelect()}
       WHERE f.organization_id = ?1
       ORDER BY CASE WHEN f.finished_at IS NULL THEN 0 ELSE 1 END, f.started_at DESC
@@ -296,6 +298,7 @@ export async function compareBatches(request: Request, env: Env, requestId: stri
   const organizationId = selectOrganization(session, url.searchParams.get("organizationId"));
   const recipeId = url.searchParams.get("recipeId")?.trim() ?? "";
   if (!RECIPE_ID_PATTERN.test(recipeId)) throw new ApiError(400, "INVALID_RECIPE_ID", "Selecione uma receita valida.");
+  await requireOrganizationBatches(env.DB, organizationId);
   const result = await env.DB.prepare(`${batchSelect()}
       WHERE f.organization_id = ?1 AND f.recipe_id = ?2
       ORDER BY f.started_at DESC LIMIT 50`).bind(organizationId, recipeId).all<BatchRow>();
@@ -382,7 +385,9 @@ async function attachmentRow(db: D1Database, batchId: string, attachmentId: stri
 
 async function contextForRequest(request: Request, env: Env): Promise<{ session: SessionContext; organizationId: string }> {
   const session = await requireSession(request, env);
-  return { session, organizationId: selectOrganization(session, new URL(request.url).searchParams.get("organizationId")) };
+  const organizationId = selectOrganization(session, new URL(request.url).searchParams.get("organizationId"));
+  await requireOrganizationBatches(env.DB, organizationId);
+  return { session, organizationId };
 }
 
 async function writeContext(request: Request, env: Env, rawOrganizationId: unknown): Promise<{ session: SessionContext; organizationId: string }> {
@@ -390,6 +395,7 @@ async function writeContext(request: Request, env: Env, rawOrganizationId: unkno
   const organizationId = selectOrganization(session, typeof rawOrganizationId === "string" ? rawOrganizationId : null);
   const membership = session.memberships.find((item) => item.organizationId === organizationId);
   if (!membership || membership.role === "viewer") throw new ApiError(403, "BATCH_WRITE_DENIED", "Seu perfil nao pode alterar lotes.");
+  await requireOrganizationBatches(env.DB, organizationId);
   return { session, organizationId };
 }
 
