@@ -1,9 +1,15 @@
-import { RETENTION_BATCH_SIZE, telemetryRetentionDays } from "./retention";
+import {
+  RETENTION_BATCH_SIZE, telemetryRetentionDays, d1BillingPlan,
+  D1_PAID_STORAGE_WARNING_BYTES, type D1BillingPlan,
+} from "./retention";
 
 // Workers Free: 500 MB per D1 database (decimal bytes).
 export const D1_FREE_LIMIT_BYTES = 500_000_000;
 export const D1_HEALTH_WARNING_BYTES = 250_000_000;
 export const D1_HEALTH_CRITICAL_BYTES = 350_000_000;
+// Workers Paid: 5 GB storage included account-wide and 10 GB hard per DB.
+export const D1_PAID_HEALTH_WARNING_BYTES = D1_PAID_STORAGE_WARNING_BYTES;
+export const D1_PAID_HEALTH_CRITICAL_BYTES = 9_000_000_000;
 export const RETENTION_DAILY_CAPACITY = RETENTION_BATCH_SIZE * 6 * 24;
 // D1 Workers Free row-write quota (enforced since 2026-09-01).
 // Each *new* telemetry request executes at least three D1 write statements:
@@ -33,6 +39,7 @@ export interface D1HealthAssessment {
 }
 
 export interface D1DailyHealthReport extends D1HealthMetrics, D1HealthAssessment {
+  billingPlan: D1BillingPlan;
   sampledAt: number;
   dayUtc: string;
   retentionDays: number;
@@ -45,7 +52,7 @@ export function shouldRunD1DailyHealth(scheduledTimeMs: number): boolean {
   return date.getUTCHours() === 12 && date.getUTCMinutes() === 5;
 }
 
-export function assessD1Health(metrics: D1HealthMetrics): D1HealthAssessment {
+export function assessD1Health(metrics: D1HealthMetrics, billingPlan: D1BillingPlan = "free"): D1HealthAssessment {
   let level: D1HealthLevel = "normal";
   const reasons: string[] = [];
   const warning = (reason: string) => {
@@ -59,10 +66,16 @@ export function assessD1Health(metrics: D1HealthMetrics): D1HealthAssessment {
 
   if (metrics.sizeBytes === null || !Number.isFinite(metrics.sizeBytes)) {
     warning("O tamanho do banco nao foi disponibilizado pelo D1.");
+  } else if (billingPlan === "paid") {
+    if (metrics.sizeBytes >= D1_PAID_HEALTH_CRITICAL_BYTES) {
+      critical("Armazenamento D1 >= 9 GB (90% do limite de 10 GB por banco Paid).");
+    } else if (metrics.sizeBytes >= D1_PAID_HEALTH_WARNING_BYTES) {
+      warning("Armazenamento D1 >= 4 GB (aproximando-se dos 5 GB incluidos no Paid).");
+    }
   } else if (metrics.sizeBytes >= D1_HEALTH_CRITICAL_BYTES) {
-    critical("Armazenamento D1 >= 350 MB (70% da capacidade).");
+    critical("Armazenamento D1 >= 350 MB (70% da capacidade Free).");
   } else if (metrics.sizeBytes >= D1_HEALTH_WARNING_BYTES) {
-    warning("Armazenamento D1 >= 250 MB (50% da capacidade).");
+    warning("Armazenamento D1 >= 250 MB (50% da capacidade Free).");
   }
 
   if (metrics.rowsLast24h >= RETENTION_DAILY_CAPACITY) {
@@ -83,10 +96,14 @@ export function assessD1Health(metrics: D1HealthMetrics): D1HealthAssessment {
   // More useful than the strict 3-statement minimum: estimate row writes
   // including typical index/side effects. It is intentionally approximate.
   const estimatedDailyRowWrites = projectedSamplesPerDay * TELEMETRY_ESTIMATED_WRITES_PER_SAMPLE;
-  if (estimatedDailyRowWrites >= D1_FREE_DAILY_WRITE_LIMIT) {
-    critical("Projecao aproximada de escritas diarias >= 100.000 (cota D1 Free; fator 8, confirmar nas metricas reais).");
-  } else if (estimatedDailyRowWrites >= D1_FREE_DAILY_WRITE_LIMIT * 0.8) {
-    warning("Projecao aproximada de escritas diarias >= 80% da cota D1 Free (fator 8; confirmar nas metricas reais).");
+  // The Free daily write cap does not apply to Workers Paid; Paid usage is
+  // billed monthly and should be monitored with actual account analytics.
+  if (billingPlan === "free") {
+    if (estimatedDailyRowWrites >= D1_FREE_DAILY_WRITE_LIMIT) {
+      critical("Projecao aproximada de escritas diarias >= 100.000 (cota D1 Free; fator 8, confirmar nas metricas reais).");
+    } else if (estimatedDailyRowWrites >= D1_FREE_DAILY_WRITE_LIMIT * 0.8) {
+      warning("Projecao aproximada de escritas diarias >= 80% da cota D1 Free (fator 8; confirmar nas metricas reais).");
+    }
   }
 
   if (metrics.expiredRows >= RETENTION_DAILY_CAPACITY) {
@@ -108,8 +125,9 @@ export async function runD1DailyHealth(
 ): Promise<D1DailyHealthReport> {
   const now = Math.floor(scheduledTimeMs / 1000);
   const dayUtc = new Date(scheduledTimeMs).toISOString().slice(0, 10);
-  const settings = env as Env & { TELEMETRY_RETENTION_DAYS?: string };
+  const settings = env as Env & { TELEMETRY_RETENTION_DAYS?: string; D1_BILLING_PLAN?: string };
   const retentionDays = telemetryRetentionDays(settings.TELEMETRY_RETENTION_DAYS);
+  const billingPlan = d1BillingPlan(settings.D1_BILLING_PLAN);
   const cutoff = retentionDays === 0 ? 0 : now - retentionDays * 86_400;
 
   const measurement = await env.DB.prepare(
@@ -136,7 +154,7 @@ export async function runD1DailyHealth(
     rowsLastHour: values.rowsLastHour,
     expiredRows: values.expiredRows,
   };
-  const assessment = assessD1Health(metrics);
+  const assessment = assessD1Health(metrics, billingPlan);
 
   let growthBytes: number | null = null;
   try {
@@ -152,6 +170,7 @@ export async function runD1DailyHealth(
   }
 
   const report: D1DailyHealthReport = {
+    billingPlan,
     sampledAt: now,
     dayUtc,
     retentionDays,
@@ -194,9 +213,11 @@ async function emailD1HealthAlert(env: Env, report: D1DailyHealthReport): Promis
 
   const sizeText = report.sizeBytes === null
     ? "indisponivel"
-    : (report.sizeBytes / 1_000_000).toFixed(2) + " MB / 500 MB";
+    : (report.sizeBytes / 1_000_000).toFixed(2) +
+      (report.billingPlan === "paid" ? " MB / 10 GB por banco" : " MB / 500 MB");
   const lines = [
     "Nivel: " + report.level.toUpperCase(),
+    "Plano D1: " + report.billingPlan.toUpperCase(),
     "Data UTC: " + report.dayUtc,
     "Tamanho D1: " + sizeText,
     "Telemetrias totais: " + report.telemetryRows,

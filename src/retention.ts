@@ -37,13 +37,20 @@ export function scheduledJobGates(vars: ScheduledJobGateVars): {
   }
   return { retention: true, maintenance: false };
 }
-// Provides 57,600 raw-delete capacity/day, allowing headroom above
-// 25 devices x 1 minute (36,000) plus safety-event snapshots.
-// Requires Workers/D1 Paid before operating a 25-device fleet.
-// 250 x 144 cleanups/day = 36,000 raw rows/day. The Free 10-controller
-// pilot generates ~4,800 stable snapshots/day (plus safety transitions).
+// 250 rows per cleanup x 144 cleanups/day = 36,000 raw deletes/day.
+// Monitor ingestion and backlog before increasing fleet size or sampling rate.
 export const RETENTION_BATCH_SIZE = 250;
 export const D1_STORAGE_WARNING_BYTES = 350_000_000;
+export const D1_PAID_STORAGE_WARNING_BYTES = 4_000_000_000;
+export type D1BillingPlan = "free" | "paid";
+
+export function d1BillingPlan(raw: string | undefined): D1BillingPlan {
+  const value = raw?.trim() ?? "";
+  if (value === "" || value === "free") return "free";
+  if (value === "paid") return "paid";
+  throw new Error("D1_BILLING_PLAN must be free or paid.");
+}
+
 const MAX_RETENTION_DAYS = 3650;
 
 export interface TelemetryPruneStats {
@@ -119,17 +126,23 @@ export async function pruneExpiredTelemetry(
 
 export async function runTelemetryRetention(env: Env, scheduledTimeMs: number): Promise<number> {
   // Generated Env types can be refreshed with wrangler types later.
-  const settings = env as Env & { TELEMETRY_RETENTION_DAYS?: string };
+  const settings = env as Env & { TELEMETRY_RETENTION_DAYS?: string; D1_BILLING_PLAN?: string };
   const retentionDays = telemetryRetentionDays(settings.TELEMETRY_RETENTION_DAYS);
+  const billingPlan = d1BillingPlan(settings.D1_BILLING_PLAN);
   const stats = await pruneExpiredTelemetry(env.DB, scheduledTimeMs / 1000, retentionDays);
 
   // D1 returns its post-query size and row-usage metrics without an extra query.
   console.info("Telemetry retention", { retentionDays, ...stats });
 
-  if (stats.sizeAfterBytes !== null && stats.sizeAfterBytes >= D1_STORAGE_WARNING_BYTES) {
-    console.warn("D1 storage approaching free-tier capacity", {
+  const warningBytes = billingPlan === "paid"
+    ? D1_PAID_STORAGE_WARNING_BYTES : D1_STORAGE_WARNING_BYTES;
+  if (stats.sizeAfterBytes !== null && stats.sizeAfterBytes >= warningBytes) {
+    console.warn(billingPlan === "paid"
+      ? "D1 storage approaching Paid included capacity"
+      : "D1 storage approaching free-tier capacity", {
       sizeAfterBytes: stats.sizeAfterBytes,
-      warningThresholdBytes: D1_STORAGE_WARNING_BYTES,
+      warningThresholdBytes: warningBytes,
+      billingPlan,
     });
   }
   if (stats.deletedRows === RETENTION_BATCH_SIZE) {

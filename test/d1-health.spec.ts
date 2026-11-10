@@ -4,6 +4,8 @@ import {
   assessD1Health,
   D1_HEALTH_CRITICAL_BYTES,
   D1_HEALTH_WARNING_BYTES,
+  D1_PAID_HEALTH_WARNING_BYTES,
+  D1_PAID_HEALTH_CRITICAL_BYTES,
   D1_FREE_DAILY_WRITE_LIMIT,
   TELEMETRY_MINIMUM_WRITES_PER_SAMPLE,
   TELEMETRY_ESTIMATED_WRITES_PER_SAMPLE,
@@ -36,6 +38,18 @@ describe("D1 daily monitoring", () => {
     expect(assessD1Health({ ...normal, expiredRows: RETENTION_BATCH_SIZE * 4 }).level).toBe("warning");
     expect(assessD1Health({ ...normal, expiredRows: RETENTION_DAILY_CAPACITY }).level).toBe("critical");
     expect(assessD1Health({ ...normal, sizeBytes: null }).level).toBe("warning");
+  });
+
+  it("applies Paid thresholds instead of triggering outdated Free quota alarms", () => {
+    const baseline = {
+      sizeBytes: 380_000_000, telemetryRows: 1000,
+      rowsLast24h: 1000, rowsLastHour: 420, expiredRows: 0,
+    };
+    expect(assessD1Health(baseline, "free").level).toBe("critical");
+    expect(assessD1Health(baseline, "paid").level).toBe("normal");
+    expect(assessD1Health({ ...baseline, sizeBytes: D1_PAID_HEALTH_WARNING_BYTES }, "paid").level).toBe("warning");
+    expect(assessD1Health({ ...baseline, sizeBytes: D1_PAID_HEALTH_CRITICAL_BYTES }, "paid").level).toBe("critical");
+    expect(assessD1Health({ ...baseline, rowsLast24h: RETENTION_DAILY_CAPACITY }, "paid").level).toBe("critical");
   });
 
   it("records daily metrics without sending routine email", async () => {
