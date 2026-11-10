@@ -1,52 +1,27 @@
 import { ApiError } from "./types";
 
-export const HISTORY_SECONDS_PER_DAY = 86_400;
-export type HistoryPlanCode = "essential" | "plus" | "pro";
+import {
+  PLAN_SECONDS_PER_DAY, PLAN_POLICY, planEntitlements, organizationPlanEntitlements,
+  type PlanCode, type PlanEntitlements,
+} from "./plan-policy";
 
-export interface HistoryPlanEntitlements {
-  plan: HistoryPlanCode;
-  maxRangeSeconds: number;
-  canUseFiveMinuteArchive: boolean;
-  canUseHourlyArchive: boolean;
-}
-
-// Product proposal for pilot. The same D1 aggregates are retained for the
-// longest supported plan; authorization controls access without deleting data
-// when a customer changes tier. These values are not prices or billing terms.
-export const HISTORY_PLAN_POLICY: Record<HistoryPlanCode, HistoryPlanEntitlements> = {
-  essential: {
-    plan: "essential",
-    maxRangeSeconds: 7 * HISTORY_SECONDS_PER_DAY,
-    canUseFiveMinuteArchive: false,
-    canUseHourlyArchive: false,
-  },
-  plus: {
-    plan: "plus",
-    maxRangeSeconds: 90 * HISTORY_SECONDS_PER_DAY,
-    canUseFiveMinuteArchive: true,
-    canUseHourlyArchive: false,
-  },
-  pro: {
-    plan: "pro",
-    maxRangeSeconds: 365 * HISTORY_SECONDS_PER_DAY,
-    canUseFiveMinuteArchive: true,
-    canUseHourlyArchive: true,
-  },
-};
+// Compatibility exports for existing history callers.
+export const HISTORY_SECONDS_PER_DAY = PLAN_SECONDS_PER_DAY;
+export type HistoryPlanCode = PlanCode;
+export type HistoryPlanEntitlements = Omit<PlanEntitlements, "maxControllers">;
+export const HISTORY_PLAN_POLICY = PLAN_POLICY;
 
 export function historyEntitlements(raw: unknown): HistoryPlanEntitlements {
-  const plan = raw === "plus" || raw === "pro" ? raw : "essential";
-  return { ...HISTORY_PLAN_POLICY[plan] };
+  const { maxControllers: _maxControllers, ...history } = planEntitlements(raw);
+  return history;
 }
 
 export async function organizationHistoryEntitlements(
   db: D1Database, organizationId: string,
 ): Promise<HistoryPlanEntitlements> {
-  const row = await db.prepare(
-    "SELECT plan_code AS planCode FROM organization_history_plans WHERE organization_id = ?1",
-  ).bind(organizationId).first<{ planCode: string }>();
-  // Missing/unknown/invalid billing state never grants premium access.
-  return historyEntitlements(row?.planCode);
+  const { maxControllers: _maxControllers, ...history } =
+    await organizationPlanEntitlements(db, organizationId);
+  return history;
 }
 
 export function requireHistoryPlanRange(
@@ -57,7 +32,7 @@ export function requireHistoryPlanRange(
     throw new ApiError(400, "INVALID_HISTORY_RANGE", "Periodo historico invalido.");
   }
   if (rangeSeconds <= entitlements.maxRangeSeconds) return;
-  const needed = rangeSeconds > 90 * HISTORY_SECONDS_PER_DAY ? "Pro" : "Plus";
+  const needed = rangeSeconds > PLAN_POLICY.plus.maxRangeSeconds ? "Pro" : "Plus";
   throw new ApiError(
     403, "HISTORY_PLAN_REQUIRED",
     `Esse periodo historico requer o plano ${needed} ou superior.`,
