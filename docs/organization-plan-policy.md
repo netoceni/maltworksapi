@@ -77,10 +77,8 @@ The lockfile was not upgraded. Installation reported 11 dependency advisories
 - Recipes, fermentation/batches, density, exports and notifications do not yet
   have a complete centrally enforced commercial policy. Their product semantics,
   API gates and expired-subscription behavior remain work in #23.
-- Aggregate `/v1/devices/:id/history/summary` checks plan access, but legacy raw
-  `/v1/devices/:id/telemetry` does not consult the history policy and can request
-  old raw samples if retained. This increment preserves that API behavior;
-  history authorization across both routes is a separate follow-up before sale.
+- Raw `/v1/devices/:id/telemetry` now applies the same history plan windows as
+  aggregate access. See the follow-up behavior and validation below.
 - API #22 has passed CI but remains independent/unmerged. This branch is based
   on API #21 to include its portable Lab fixture/runtime fix. Review this PR
   against #21; after #21 merges, retarget this PR to main and rerun CI. Do not
@@ -108,3 +106,40 @@ API staging file is only an example with a placeholder D1 ID; it omits Admin
 R2/email bindings and must not be mistaken for proof of a deployed full Admin
 backend. Its guards deliberately restrict the telemetry Lab's resources.
 No deployment, remote migration or live staging mutation was performed.
+
+## Raw history authorization follow-up
+
+The read-only raw history route resolves current organization entitlements from
+D1 after device ownership authorization. Its access window is inclusive from
+`serverNow - maxRangeSeconds` through `serverNow`: Essencial 7 days, Plus 90,
+Pro 365. Missing grants default to Essencial. Query parameters cannot grant a
+higher tier. The policy is evaluated on every request, including pagination.
+
+- Explicit numeric `range` above the plan returns 403 `HISTORY_PLAN_REQUIRED`.
+  Existing range syntax limits (15 seconds through 365 days) remain unchanged.
+- `range=all` means all **available** raw samples in the current plan window.
+  Counts, minimum/maximum timestamps, bucket sizing and points use that same
+  window. Empty results retain the previous response shape.
+- Omitted range and `before` pagination always keep the lower bound anchored
+  to server time. Old cursors return an empty page; a future cursor cannot widen
+  the window. The default cursor includes the current server second. Invalid,
+  fractional, negative or unsafe integer cursors return 400
+  `INVALID_HISTORY_CURSOR` instead of a database/server error.
+- Short-window realtime points are filtered to the same requested time window.
+  Existing short-range chart merging remains supported.
+- Downgrades/revoked manual grants immediately restrict subsequent reads without
+  deleting stored samples. Upgrades can expose retained samples again. No
+  additional retention or long-term raw storage is promised by a paid tier:
+  queries return only data still available under the independent retention policy.
+
+Seven new real HTTP/D1 tests cover each plan (and missing grant), exact inclusive
+boundary and one second too old, all/numeric/default/paginated queries, future
+rows, metadata, malicious entitlement parameters, downgrades/revocation/upgrade,
+tenant separation, authentication, invalid inputs and empty windows. They also
+prove a downgraded device still ingests telemetry and exposes its latest state,
+and that historical reads do not remove old samples. The existing sampling,
+realtime, aggregate and controller quota tests remain in the full regression suite.
+
+This follow-up is stacked on API #24 so only the raw-history change appears in
+its diff. No migration, telemetry ingestion, device credentials, retention policy,
+Worker configuration or workflow was changed. No merge/deploy is authorized.

@@ -4,6 +4,7 @@ import { requireSession, selectOrganization } from "./auth";
 import { ApiError } from "./types";
 import { latestCommandForDevice } from "./commands";
 import { CONTROLLER_LIMIT_SQL } from "./plan-policy";
+import { organizationHistoryEntitlements, requireHistoryPlanRange } from "./history-plans";
 
 export async function claimDevice(request: Request, env: Env, requestId: string): Promise<Response> {
   const session = await requireSession(request, env);
@@ -455,12 +456,17 @@ export async function deviceHistory(
   const requestedRange = url.searchParams.get("range");
   const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 500) : 100;
-  const before = Number.parseInt(url.searchParams.get("before") ?? "2147483647", 10);
 
   const allowed = await env.DB.prepare(
     "SELECT id FROM devices WHERE id = ?1 AND organization_id = ?2",
   ).bind(deviceId, organizationId).first();
   if (!allowed) throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado.");
+
+  // Access windows are anchored to server time, never to a pagination cursor.
+  // This is query authorization only: ingestion and retention stay independent.
+  const entitlements = await organizationHistoryEntitlements(env.DB, organizationId);
+  const now = Math.floor(Date.now() / 1000);
+  const oldestAllowed = now - entitlements.maxRangeSeconds;
 
   if (requestedRange !== null) {
     const rangeSeconds = requestedRange === "all"
@@ -477,17 +483,19 @@ export async function deviceHistory(
       throw new ApiError(400, "INVALID_HISTORY_RANGE", "Periodo do historico invalido.");
     }
 
+    if (rangeSeconds !== null) requireHistoryPlanRange(entitlements, rangeSeconds);
+
     const requestedMaxPoints = Number.parseInt(url.searchParams.get("maxPoints") ?? "720", 10);
     const maxPoints = Number.isFinite(requestedMaxPoints)
       ? Math.min(Math.max(requestedMaxPoints, 2), 1_000)
       : 720;
-    const now = Math.floor(Date.now() / 1000);
-    const since = rangeSeconds === null ? 0 : now - rangeSeconds;
+    // "all" means all available samples inside this plan's window.
+    const since = rangeSeconds === null ? oldestAllowed : now - rangeSeconds;
     const bounds = await env.DB.prepare(
       `SELECT MIN(received_at) AS minimum, MAX(received_at) AS maximum, COUNT(*) AS count
          FROM telemetry
-        WHERE device_id = ?1 AND received_at >= ?2`,
-    ).bind(deviceId, since).first<{ minimum: number | null; maximum: number | null; count: number }>();
+        WHERE device_id = ?1 AND received_at >= ?2 AND received_at <= ?3`,
+    ).bind(deviceId, since, now).first<{ minimum: number | null; maximum: number | null; count: number }>();
 
     if (!bounds?.count || bounds.minimum === null || bounds.maximum === null) {
       return jsonResponse({
@@ -517,11 +525,11 @@ export async function deviceHistory(
               MAX(alarms_active) AS alarmsActive,
               CAST(ROUND(AVG(rssi)) AS INTEGER) AS rssi
          FROM telemetry
-        WHERE device_id = ?1 AND received_at >= ?2
+        WHERE device_id = ?1 AND received_at >= ?2 AND received_at <= ?6
         GROUP BY CAST((received_at - ?3) / ?4 AS INTEGER)
         ORDER BY receivedAt DESC
         LIMIT ?5`,
-    ).bind(deviceId, since, bounds.minimum, bucketSeconds, maxPoints).all();
+    ).bind(deviceId, since, bounds.minimum, bucketSeconds, maxPoints, now).all();
 
     let points: unknown[] = rows.results;
     if (rangeSeconds !== null && rangeSeconds <= 15 * 60) {
@@ -537,7 +545,11 @@ export async function deviceHistory(
           const timestamp = Number(point.receivedAt);
           if (Number.isFinite(timestamp)) merged.set(timestamp, point);
         }
-        for (const point of recent) merged.set(point.receivedAt, point);
+        for (const point of recent) {
+          if (point.receivedAt >= since && point.receivedAt <= now) {
+            merged.set(point.receivedAt, point);
+          }
+        }
         points = [...merged.entries()]
           .sort(([left], [right]) => right - left)
           .slice(0, maxPoints)
@@ -563,6 +575,13 @@ export async function deviceHistory(
     });
   }
 
+  const rawBefore = url.searchParams.get("before");
+  const before = rawBefore === null ? now + 1 : Number(rawBefore);
+  if (rawBefore !== null && (!/^\d+$/u.test(rawBefore) ||
+      !Number.isSafeInteger(before) || before < 0)) {
+    throw new ApiError(400, "INVALID_HISTORY_CURSOR", "Cursor do historico invalido.");
+  }
+
   const rows = await env.DB.prepare(
     `SELECT received_at AS receivedAt, sent_at AS sentAt,
             refrigerator_value AS refrigeratorValue,
@@ -571,8 +590,9 @@ export async function deviceHistory(
             cooling, heating, alarms_active AS alarmsActive, rssi
        FROM telemetry
       WHERE device_id = ?1 AND received_at < ?2
+        AND received_at >= ?4 AND received_at <= ?5
       ORDER BY received_at DESC
       LIMIT ?3`,
-  ).bind(deviceId, before, limit).all();
+  ).bind(deviceId, before, limit, oldestAllowed, now).all();
   return jsonResponse({ ok: true, deviceId, points: rows.results, requestId });
 }
