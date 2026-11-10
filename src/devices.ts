@@ -3,6 +3,8 @@ import { jsonResponse, readJson } from "./http";
 import { requireSession, selectOrganization } from "./auth";
 import { ApiError } from "./types";
 import { latestCommandForDevice } from "./commands";
+import { CONTROLLER_LIMIT_SQL } from "./plan-policy";
+import { organizationHistoryEntitlements, requireHistoryPlanRange } from "./history-plans";
 
 export async function claimDevice(request: Request, env: Env, requestId: string): Promise<Response> {
   const session = await requireSession(request, env);
@@ -121,27 +123,42 @@ export async function claimDevice(request: Request, env: Env, requestId: string)
     throw new ApiError(401, "REGISTRATION_TOKEN_REJECTED", "Codigo de cadastro incorreto.");
   }
   const now = Math.floor(Date.now() / 1000);
-  const result = await env.DB.prepare(
-    `UPDATE devices
-        SET organization_id = ?2, name = ?3, status = 'active',
-            claimed_at = ?4, updated_at = ?4
-      WHERE id = ?1 AND organization_id IS NULL`,
-  ).bind(deviceId, organizationId, name, now).run();
-  if ((result.meta.changes ?? 0) !== 1) {
-    throw new ApiError(409, "DEVICE_ALREADY_CLAIMED", "Este controlador foi vinculado por outra solicitacao.");
+  // D1 serializes writes. Count, current plan and assignment are evaluated in
+  // one UPDATE, so simultaneous claims cannot consume the same remaining slot.
+  // All linked rows count, including disabled/offline devices. Existing-device
+  // retries/rebinds above intentionally bypass the quota after a downgrade.
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE devices
+          SET organization_id = ?2, name = ?3, status = 'active',
+              claimed_at = ?4, updated_at = ?4
+        WHERE id = ?1 AND organization_id IS NULL
+          AND EXISTS (SELECT 1 FROM device_credentials
+                       WHERE device_id = ?1 AND pairing_code_hash = ?5)
+          AND (SELECT COUNT(*) FROM devices WHERE organization_id = ?2)
+              < (${CONTROLLER_LIMIT_SQL})`,
+    ).bind(deviceId, organizationId, name, now, suppliedHash),
+    // changes() refers to the immediately preceding UPDATE in this transaction.
+    // Failed claims create no audit row; audit failure rolls back the claim.
+    env.DB.prepare(
+      `INSERT INTO audit_log (
+         organization_id, user_id, device_id, action, details_json, created_at
+       ) SELECT ?1, ?2, ?3, 'device.claimed', ?4, ?5 WHERE changes() = 1`,
+    ).bind(organizationId, session.userId, deviceId, JSON.stringify({ name }), now),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    const current = await env.DB.prepare(
+      `SELECT d.organization_id AS organizationId, c.pairing_code_hash AS pairingCodeHash
+         FROM devices d LEFT JOIN device_credentials c ON c.device_id = d.id WHERE d.id = ?1`,
+    ).bind(deviceId).first<{ organizationId: string | null; pairingCodeHash: string | null }>();
+    if (!current || current.organizationId !== null) {
+      throw new ApiError(409, "DEVICE_ALREADY_CLAIMED", "Este controlador foi vinculado por outra solicitacao.");
+    }
+    if (!current.pairingCodeHash || !constantTimeEqual(suppliedHash, current.pairingCodeHash)) {
+      throw new ApiError(401, "REGISTRATION_TOKEN_REJECTED", "Codigo de cadastro alterado. Tente novamente.");
+    }
+    throw new ApiError(403, "CONTROLLER_PLAN_LIMIT_REACHED", "O limite de controladores deste plano foi atingido.");
   }
-
-  await env.DB.prepare(
-    `INSERT INTO audit_log (
-       organization_id, user_id, device_id, action, details_json, created_at
-     ) VALUES (?1, ?2, ?3, 'device.claimed', ?4, ?5)`,
-  ).bind(
-    organizationId,
-    session.userId,
-    deviceId,
-    JSON.stringify({ name }),
-    now,
-  ).run();
 
   return jsonResponse({ ok: true, device: { id: deviceId, name, status: "active" }, requestId }, 201);
 }
@@ -439,12 +456,17 @@ export async function deviceHistory(
   const requestedRange = url.searchParams.get("range");
   const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 500) : 100;
-  const before = Number.parseInt(url.searchParams.get("before") ?? "2147483647", 10);
 
   const allowed = await env.DB.prepare(
     "SELECT id FROM devices WHERE id = ?1 AND organization_id = ?2",
   ).bind(deviceId, organizationId).first();
   if (!allowed) throw new ApiError(404, "DEVICE_NOT_FOUND", "Controlador nao encontrado.");
+
+  // Access windows are anchored to server time, never to a pagination cursor.
+  // This is query authorization only: ingestion and retention stay independent.
+  const entitlements = await organizationHistoryEntitlements(env.DB, organizationId);
+  const now = Math.floor(Date.now() / 1000);
+  const oldestAllowed = now - entitlements.maxRangeSeconds;
 
   if (requestedRange !== null) {
     const rangeSeconds = requestedRange === "all"
@@ -461,17 +483,19 @@ export async function deviceHistory(
       throw new ApiError(400, "INVALID_HISTORY_RANGE", "Periodo do historico invalido.");
     }
 
+    if (rangeSeconds !== null) requireHistoryPlanRange(entitlements, rangeSeconds);
+
     const requestedMaxPoints = Number.parseInt(url.searchParams.get("maxPoints") ?? "720", 10);
     const maxPoints = Number.isFinite(requestedMaxPoints)
       ? Math.min(Math.max(requestedMaxPoints, 2), 1_000)
       : 720;
-    const now = Math.floor(Date.now() / 1000);
-    const since = rangeSeconds === null ? 0 : now - rangeSeconds;
+    // "all" means all available samples inside this plan's window.
+    const since = rangeSeconds === null ? oldestAllowed : now - rangeSeconds;
     const bounds = await env.DB.prepare(
       `SELECT MIN(received_at) AS minimum, MAX(received_at) AS maximum, COUNT(*) AS count
          FROM telemetry
-        WHERE device_id = ?1 AND received_at >= ?2`,
-    ).bind(deviceId, since).first<{ minimum: number | null; maximum: number | null; count: number }>();
+        WHERE device_id = ?1 AND received_at >= ?2 AND received_at <= ?3`,
+    ).bind(deviceId, since, now).first<{ minimum: number | null; maximum: number | null; count: number }>();
 
     if (!bounds?.count || bounds.minimum === null || bounds.maximum === null) {
       return jsonResponse({
@@ -501,11 +525,11 @@ export async function deviceHistory(
               MAX(alarms_active) AS alarmsActive,
               CAST(ROUND(AVG(rssi)) AS INTEGER) AS rssi
          FROM telemetry
-        WHERE device_id = ?1 AND received_at >= ?2
+        WHERE device_id = ?1 AND received_at >= ?2 AND received_at <= ?6
         GROUP BY CAST((received_at - ?3) / ?4 AS INTEGER)
         ORDER BY receivedAt DESC
         LIMIT ?5`,
-    ).bind(deviceId, since, bounds.minimum, bucketSeconds, maxPoints).all();
+    ).bind(deviceId, since, bounds.minimum, bucketSeconds, maxPoints, now).all();
 
     let points: unknown[] = rows.results;
     if (rangeSeconds !== null && rangeSeconds <= 15 * 60) {
@@ -521,7 +545,11 @@ export async function deviceHistory(
           const timestamp = Number(point.receivedAt);
           if (Number.isFinite(timestamp)) merged.set(timestamp, point);
         }
-        for (const point of recent) merged.set(point.receivedAt, point);
+        for (const point of recent) {
+          if (point.receivedAt >= since && point.receivedAt <= now) {
+            merged.set(point.receivedAt, point);
+          }
+        }
         points = [...merged.entries()]
           .sort(([left], [right]) => right - left)
           .slice(0, maxPoints)
@@ -547,6 +575,13 @@ export async function deviceHistory(
     });
   }
 
+  const rawBefore = url.searchParams.get("before");
+  const before = rawBefore === null ? now + 1 : Number(rawBefore);
+  if (rawBefore !== null && (!/^\d+$/u.test(rawBefore) ||
+      !Number.isSafeInteger(before) || before < 0)) {
+    throw new ApiError(400, "INVALID_HISTORY_CURSOR", "Cursor do historico invalido.");
+  }
+
   const rows = await env.DB.prepare(
     `SELECT received_at AS receivedAt, sent_at AS sentAt,
             refrigerator_value AS refrigeratorValue,
@@ -555,8 +590,9 @@ export async function deviceHistory(
             cooling, heating, alarms_active AS alarmsActive, rssi
        FROM telemetry
       WHERE device_id = ?1 AND received_at < ?2
+        AND received_at >= ?4 AND received_at <= ?5
       ORDER BY received_at DESC
       LIMIT ?3`,
-  ).bind(deviceId, before, limit).all();
+  ).bind(deviceId, before, limit, oldestAllowed, now).all();
   return jsonResponse({ ok: true, deviceId, points: rows.results, requestId });
 }
