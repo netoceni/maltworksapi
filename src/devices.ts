@@ -3,6 +3,7 @@ import { jsonResponse, readJson } from "./http";
 import { requireSession, selectOrganization } from "./auth";
 import { ApiError } from "./types";
 import { latestCommandForDevice } from "./commands";
+import { CONTROLLER_LIMIT_SQL } from "./plan-policy";
 
 export async function claimDevice(request: Request, env: Env, requestId: string): Promise<Response> {
   const session = await requireSession(request, env);
@@ -121,27 +122,42 @@ export async function claimDevice(request: Request, env: Env, requestId: string)
     throw new ApiError(401, "REGISTRATION_TOKEN_REJECTED", "Codigo de cadastro incorreto.");
   }
   const now = Math.floor(Date.now() / 1000);
-  const result = await env.DB.prepare(
-    `UPDATE devices
-        SET organization_id = ?2, name = ?3, status = 'active',
-            claimed_at = ?4, updated_at = ?4
-      WHERE id = ?1 AND organization_id IS NULL`,
-  ).bind(deviceId, organizationId, name, now).run();
-  if ((result.meta.changes ?? 0) !== 1) {
-    throw new ApiError(409, "DEVICE_ALREADY_CLAIMED", "Este controlador foi vinculado por outra solicitacao.");
+  // D1 serializes writes. Count, current plan and assignment are evaluated in
+  // one UPDATE, so simultaneous claims cannot consume the same remaining slot.
+  // All linked rows count, including disabled/offline devices. Existing-device
+  // retries/rebinds above intentionally bypass the quota after a downgrade.
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE devices
+          SET organization_id = ?2, name = ?3, status = 'active',
+              claimed_at = ?4, updated_at = ?4
+        WHERE id = ?1 AND organization_id IS NULL
+          AND EXISTS (SELECT 1 FROM device_credentials
+                       WHERE device_id = ?1 AND pairing_code_hash = ?5)
+          AND (SELECT COUNT(*) FROM devices WHERE organization_id = ?2)
+              < (${CONTROLLER_LIMIT_SQL})`,
+    ).bind(deviceId, organizationId, name, now, suppliedHash),
+    // changes() refers to the immediately preceding UPDATE in this transaction.
+    // Failed claims create no audit row; audit failure rolls back the claim.
+    env.DB.prepare(
+      `INSERT INTO audit_log (
+         organization_id, user_id, device_id, action, details_json, created_at
+       ) SELECT ?1, ?2, ?3, 'device.claimed', ?4, ?5 WHERE changes() = 1`,
+    ).bind(organizationId, session.userId, deviceId, JSON.stringify({ name }), now),
+  ]);
+  if ((results[0]?.meta.changes ?? 0) !== 1) {
+    const current = await env.DB.prepare(
+      `SELECT d.organization_id AS organizationId, c.pairing_code_hash AS pairingCodeHash
+         FROM devices d LEFT JOIN device_credentials c ON c.device_id = d.id WHERE d.id = ?1`,
+    ).bind(deviceId).first<{ organizationId: string | null; pairingCodeHash: string | null }>();
+    if (!current || current.organizationId !== null) {
+      throw new ApiError(409, "DEVICE_ALREADY_CLAIMED", "Este controlador foi vinculado por outra solicitacao.");
+    }
+    if (!current.pairingCodeHash || !constantTimeEqual(suppliedHash, current.pairingCodeHash)) {
+      throw new ApiError(401, "REGISTRATION_TOKEN_REJECTED", "Codigo de cadastro alterado. Tente novamente.");
+    }
+    throw new ApiError(403, "CONTROLLER_PLAN_LIMIT_REACHED", "O limite de controladores deste plano foi atingido.");
   }
-
-  await env.DB.prepare(
-    `INSERT INTO audit_log (
-       organization_id, user_id, device_id, action, details_json, created_at
-     ) VALUES (?1, ?2, ?3, 'device.claimed', ?4, ?5)`,
-  ).bind(
-    organizationId,
-    session.userId,
-    deviceId,
-    JSON.stringify({ name }),
-    now,
-  ).run();
 
   return jsonResponse({ ok: true, device: { id: deviceId, name, status: "active" }, requestId }, 201);
 }
