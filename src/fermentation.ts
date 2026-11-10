@@ -1,7 +1,7 @@
 import { requireSession, selectOrganization } from "./auth";
 import { jsonResponse, readJson } from "./http";
 import { recipeById } from "./recipes";
-import { requireOrganizationRecipes } from "./plan-policy";
+import { requireOrganizationRecipes, requireOrganizationBatches, requireOrganizationDensity } from "./plan-policy";
 import { ApiError, type SessionContext } from "./types";
 
 const SESSION_ID_PATTERN = /^fer_[0-9a-f]{32}$/u;
@@ -43,6 +43,7 @@ export async function getFermentation(
     new URL(request.url).searchParams.get("organizationId"),
   );
   await requireDevice(env.DB, deviceId, organizationId);
+  await requireOrganizationBatches(env.DB, organizationId);
   const row = await env.DB.prepare(
     `SELECT id, device_id AS deviceId, name,
             original_gravity AS originalGravity,
@@ -69,6 +70,7 @@ export async function startFermentation(
   const organizationId = selectOrganization(session, body.organizationId);
   requireWriteAccess(session, organizationId);
   await requireDevice(env.DB, deviceId, organizationId);
+  await requireOrganizationBatches(env.DB, organizationId);
 
   const name = textValue(body.name, "name", 2, 80);
   const originalGravity = gravityValue(body.originalGravity, "originalGravity");
@@ -154,6 +156,7 @@ export async function addGravityReading(
   const organizationId = selectOrganization(session, body.organizationId);
   requireWriteAccess(session, organizationId);
   await requireDevice(env.DB, deviceId, organizationId);
+  await requireOrganizationDensity(env.DB, organizationId);
   const active = await activeSession(env.DB, deviceId, organizationId);
   if (!active) {
     throw new ApiError(409, "FERMENTATION_NOT_ACTIVE", "Inicie um acompanhamento antes de registrar leituras.");
@@ -213,6 +216,7 @@ export async function deleteGravityReading(
   );
   requireWriteAccess(session, organizationId);
   await requireDevice(env.DB, deviceId, organizationId);
+  await requireOrganizationDensity(env.DB, organizationId);
   const reading = await env.DB.prepare(
     `SELECT r.id, r.session_id AS sessionId, r.gravity, r.measured_at AS measuredAt
        FROM fermentation_readings r
@@ -256,6 +260,7 @@ export async function finishFermentation(
   const organizationId = selectOrganization(session, body.organizationId);
   requireWriteAccess(session, organizationId);
   await requireDevice(env.DB, deviceId, organizationId);
+  await requireOrganizationBatches(env.DB, organizationId);
   const active = await activeSession(env.DB, deviceId, organizationId);
   if (!active) {
     throw new ApiError(409, "FERMENTATION_NOT_ACTIVE", "Nao existe acompanhamento ativo neste controlador.");
