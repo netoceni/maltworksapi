@@ -79,8 +79,10 @@ Undici e os pais Miniflare/Wrangler), corrigidos na branch de mesmo nome do outr
 repositório com os mesmos dois patches, sem alterar Wrangler. Tem PR próprio por
 ser outro repositório. Não se soma esse quatro ao número original de 11 da API.
 
-As integrações #28 e Admin #6 permanecem intactas; estes patches precisam de revisão
-e incorporação posterior, sem presumir publicação. Guardar este diagnóstico como
+Atualização: #29/API e #7/Admin foram incorporados às branches de integração por
+autorização do usuário, sem merge na main ou publicação. As auditorias e os testes
+foram refeitos no conjunto; o CI final é registrado em #28/API e #6/Admin.
+Guardar este diagnóstico como
 snapshot; executar novas auditorias ao atualizar o lockfile. Remover os overrides
 somente quando versões compatíveis dos pais resolverem os pacotes corrigidos e
 passarem novamente pela auditoria e testes. Não silenciar alertas nem diminuir a

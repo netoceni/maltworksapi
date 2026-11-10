@@ -69,8 +69,10 @@ Run `npm run check`, `npm test`, and
 `node --test scripts/maltworks-lab*.spec.mjs`. These use local resources only.
 The restricted desktop runtime initially could not start `cloudflare:test-internal`;
 the same installed dependencies passed when permitted to run the local runtime.
-The lockfile was not upgraded. Installation reported 11 dependency advisories
-(2 moderate, 9 high); triage is separate from this claim-policy change.
+The original claim-policy increment did not upgrade dependencies and reported
+11 advisories. Those records were subsequently triaged and patched in API #29,
+now incorporated into integration; the full current audit reports zero known
+vulnerabilities. See `dependency-triage-20261110.md` for versions and limitations.
 
 ## Remaining inconsistencies / commercial gates
 
