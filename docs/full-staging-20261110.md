@@ -1,19 +1,20 @@
 # Staging completo de Admin + Cloud + API — preparação de 10/11/2026
 
-Status: proposta pronta para revisão e validação local. Nenhum recurso foi criado,
-nenhuma migração remota foi aplicada e nenhum Worker foi publicado nesta preparação.
+Status: configurações preparadas e D1/R2 exclusivos criados em 10/11/2026, por
+autorização específica do usuário. Nenhuma migração remota foi aplicada e nenhum
+Worker foi publicado. O banco ainda não tem schema da aplicação.
 API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 `netoceni/maltworkspanel`. As branches `prepare/full-staging-20261110` não alteram a main.
 
-## Recursos propostos
+## Inventário e próximas etapas
 
 | Componente | Recurso exclusivo | Situação / ação futura |
 | --- | --- | --- |
 | API completa | Worker `maltworks-api-staging` | Publicar código da integração com config própria |
-| Banco | D1 `maltworks-app-staging` | Criar vazio, registrar UUID real e aplicar 0001–0018 |
+| Banco | D1 `maltworks-app-staging` | Criado: `5151e251-52c1-4406-8ae9-c6d38961d124`; migrations 0001–0018 ainda pendentes |
 | Tempo real | DO SQLite `RealtimeHub` do novo Worker | Criado na primeira publicação pela migration `v1-realtime-app-staging` |
-| Firmware de teste | R2 privado `maltworks-staging-firmware` | Criar vazio, sem domínio público ou acesso direto de navegador |
-| Anexos de lotes | R2 privado `maltworks-staging-batch-files` | Criar vazio; acesso pelo Worker e autenticação da aplicação |
+| Firmware de teste | R2 privado `maltworks-staging-firmware` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
+| Anexos de lotes | R2 privado `maltworks-staging-batch-files` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
 | Admin | Worker estático `maltworks-admin-site-staging` | Publicar assets de `netoceni/maltworksadmin` |
 | Cloud do cliente | Worker estático `maltworks-cloud-site-staging` | Publicar assets de `netoceni/maltworkspanel` |
 | Acesso | Access nos três hostnames exatos | Auditar configuração existente e preparar política de testadores e simuladores |
@@ -23,6 +24,27 @@ Todos os recursos ficam na mesma conta Cloudflare já usada pelo projeto
 (`4e8c08f70722d344cf39c362a110d706`). O isolamento é de recursos, credenciais e dados;
 faturamento, cotas da conta e permissões dos operadores continuam compartilhados.
 Não copiar dados pessoais, firmware publicado, senhas, sessões ou credenciais de produção.
+
+Inventário verificado: [staging-resources-20261110.json](staging-resources-20261110.json).
+Conta e nomes foram conferidos antes de cada criação; o novo UUID não existia no
+inventário anterior. D1 e buckets ficaram em ENAM; R2 usa classe Standard, e a
+replicação de leitura D1 está desativada. Uma consulta SELECT no banco novo encontrou
+somente `_cf_KV`, tabela interna do Cloudflare: `rows_written=0`, `changed_db=false`,
+sem tabelas de aplicação ou de migrations. Não foi usado `migrations list/apply`.
+Os buckets estão vazios e privados, confirmados por metadados, r2.dev e lista de domínios.
+
+A primeira tentativa do bucket de anexos retornou erro interno Cloudflare 10001.
+Uma nova listagem confirmou que ele não existia; uma única repetição criou o bucket.
+Os recursos anteriores foram preservados. Atenção ao nome: a configuração de
+produção usa `maltworks-recovery-20261027` (UUID `a1bf5a75-1bec-4437-92fa-64e69c3da081`);
+também existe um banco legado chamado `maltworks-production`, com UUID distinto.
+Nenhum deles nem o Lab foi reutilizado. Os recursos são exclusivos, mas ainda não
+estão ligados a um Worker publicado de staging.
+
+Foi gerado localmente `wrangler.app-staging.jsonc`, ignorado pelo Git, com o UUID
+novo e bindings `DB`, `FIRMWARE`, `BATCH_FILES`. A configuração continua sem routes,
+workers.dev, preview URLs ou EMAIL e não foi enviada ao Cloudflare. O template
+versionado mantém seu placeholder. Os quatro testes do gerador passaram novamente.
 
 O Cloud de produção continua no Pages `maltworks-cloud-app`. Apenas o novo staging
 usa Static Assets em um Worker, para manter nomes, URLs e etapas de publicação explícitos.
@@ -39,7 +61,7 @@ para `maltworks-api-lab-staging`, com D1 `maltworks-lab-staging`
 (`26b9ecab-1aaa-4120-93a5-1c409555d28b`) e namespace DO
 `70f543b57d9747c1870e728977a3bc64`. Era um Lab de histórico, sem R2 ou EMAIL.
 As migrations 0001–0018 estavam registradas nesse banco; isso **não** aplica
-migrations ao futuro `maltworks-app-staging` nem prova que o código integrado foi publicado.
+migrations ao novo `maltworks-app-staging` nem prova que o código integrado foi publicado.
 
 Admin e Cloud de staging não tinham DNS resolvido. O Worker Admin de staging retornou
 404 na consulta de metadados. A API exigia Access (302 anônimo, 200 no health com
@@ -55,7 +77,8 @@ consulta remota nem comprova propriedade, existência ou isolamento do recurso.
 
 ## Configurações preparadas
 
-- API: `wrangler.app-staging.example.jsonc`, com UUID pendente. O gerador
+- API: `wrangler.app-staging.example.jsonc` mantém o placeholder de UUID para outros
+  ambientes. A config privada local já contém o UUID do inventário. O gerador
   `scripts/full-staging-config.mjs` exige UUID novo, confere bindings/variáveis e
   gera `wrangler.app-staging.jsonc` ignorado pelo Git. `--with-maintenance` prepara
   também o cron completo (offline/monitor D1), mantendo retenções em zero.
@@ -155,7 +178,7 @@ Sem expiração, o banco cresce: acompanhar uso e volume dos simuladores.
 Não desligar os limites de segurança dos scripts antigos do Lab para fazê-los
 aceitar a nova pilha.
 
-## Sequência futura — nenhuma etapa remota executada aqui
+## Sequência de ativação — somente D1/R2 criados até aqui
 
 1. Revisar PRs e CI, reconciliar código de integração e registrar SHAs aprovados.
    Auditar no painel eventuais Workers Builds/Git integrations que possam publicar
@@ -163,10 +186,10 @@ aceitar a nova pilha.
 2. Com acesso de leitura adequado, confirmar conta, DNS, Access, nomes livres,
    recursos de produção/Lab e permissões mínimas. Aprovar identidades de teste,
    políticas, custo/cota e transferência de `api-staging`.
-3. Criar **um novo D1 e dois novos buckets privados**; salvar inventário dos IDs.
-   Gerar e revisar config privada da API com o UUID real confirmado. Conferir a
-   conta explicitamente antes de cada operação. Não confiar no nome da config como
-   única proteção contra credenciais apontando para outra conta.
+3. **Concluído: novo D1 e dois buckets privados criados**, conforme inventário acima.
+   Config privada da API gerada localmente com o UUID real. Reconfirmar conta/IDs
+   e revisar essa config antes de qualquer próxima operação. Não recriar recursos
+   por seguirem ausentes do Lab ou de uma lista consultada em outra conta.
 4. Aplicar as 18 migrations somente ao novo `DB`, usando explicitamente a config
    `wrangler.app-staging.jsonc`; consultar a lista aplicada nesse banco. Nunca usar
    o script npm `db:migrate:remote` padrão (seleciona produção).
@@ -232,11 +255,11 @@ geração de tipos fora dos repositórios, sem upload. Os tipos de produção n�
 sobrescritos. A geração lê a estrutura da config, não confirma IDs remotos.
 
 Após a incorporação do Cloud #13 ao #12, a pendência de dependências deixa de
-bloquear a preparação desse conjunto. Continuam pendentes todos os passos remotos
-da sequência e da matriz acima: auditoria DNS/Access, criação do novo D1/R2 e secrets,
-migrations no banco novo, publicação privada, proteção/ativação dos domínios e
+bloquear a preparação desse conjunto. A criação do D1/R2 também foi concluída.
+Continuam pendentes auditoria DNS/Access, secrets e contas de teste, migrations no
+banco novo, publicação privada e namespace DO, proteção/ativação dos domínios e
 transferência de `api-staging`, seguida de validação com controladores simulados.
-Nenhuma dessas etapas foi executada nesta atualização documental. O checklist
+Somente D1/R2 foram criados, sem migrations, deploy ou merge na main. O checklist
 do Cloud está em [staging.md](https://github.com/netoceni/maltworkspanel/blob/prepare/full-staging-20261110/docs/staging.md).
 
 Referências oficiais: [configuração Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/),
