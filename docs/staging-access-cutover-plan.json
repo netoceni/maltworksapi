@@ -1,0 +1,442 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_applied",
+  "verified_at": "2026-11-11T01:28:03.784Z",
+  "account_id": "4e8c08f70722d344cf39c362a110d706",
+  "zone_id": "108c035cd334643e7bb933bffe3050e4",
+  "activation_authorized_in_this_step": false,
+  "remote_resource_writes": false,
+  "main_merged": false,
+  "current": {
+    "source": "Authenticated Cloudflare dashboard; visible UI only, no Save/Create/Delete or secret reveal",
+    "dns": {
+      "zone_record_count": 10,
+      "api_staging": {
+        "type": "Worker",
+        "target": "maltworks-api-lab-staging",
+        "proxied": true,
+        "ttl": "Auto"
+      },
+      "admin_staging_record_present": false,
+      "app_staging_record_present": false,
+      "wildcard_record_present": false
+    },
+    "access": {
+      "application_count": 1,
+      "application": {
+        "id": "f5e112f8-df81-42f0-91c7-f0c4cda3da97",
+        "name": "api-staging",
+        "type": "self_hosted",
+        "hostnames": [
+          "api-staging.maltworks.com.br"
+        ],
+        "path": null,
+        "session_duration": "24h",
+        "accept_all_identity_providers": true
+      },
+      "human_policy": {
+        "id": "5824fe44-76ed-42f4-bb06-07b617589d4f",
+        "name": "Maltworks API Staging",
+        "decision": "allow",
+        "include_selector": "emails",
+        "approved_email_count": 1,
+        "email_values_omitted": true,
+        "session_duration": "24h",
+        "require": [],
+        "exclude": [],
+        "reusable_flag_not_verified": true
+      },
+      "service_policy": {
+        "id": "f83d31ed-c98d-4edb-8fde-df184abdf42b",
+        "name": "Maltworks Lab Service Auth",
+        "decision": "non_identity",
+        "include_selector": "service_token",
+        "tokens": [
+          {
+            "id": "58d6a273-b961-4936-b444-482700608202",
+            "name": "Maltworks Lab Staging CLI",
+            "enabled": true,
+            "expiry_date_as_shown": "2027-10-30"
+          },
+          {
+            "id": "9b64b50b-5d45-472e-abdf-ac9d51e427bc",
+            "name": "Maltworks Lab Simulator Local",
+            "enabled": true,
+            "expiry_date_as_shown": "2027-10-30"
+          }
+        ]
+      },
+      "attached_bypass_policy_present": false,
+      "identity_providers": [
+        {
+          "id": "36e8b7b4-8513-4615-b35b-26d7a6bcce40",
+          "type": "onetimepin",
+          "configured_name": "kash — Código por e-mail"
+        }
+      ],
+      "cors": {
+        "bypass_options_to_origin": false,
+        "allow_credentials": false,
+        "origins": [],
+        "methods": [],
+        "headers_not_configured": true
+      },
+      "cookies": {
+        "http_only": false,
+        "binding_cookie": false,
+        "enforce_path": false,
+        "eager_redirect": true,
+        "same_site_unset": true
+      },
+      "return_401_for_service_auth_failure": false,
+      "admin_or_cloud_applications_present": false,
+      "raw_app_policy_export_available": false
+    },
+    "public_dns": [
+      {
+        "hostname": "api-staging.maltworks.com.br",
+        "resolver": "cloudflare",
+        "status_by_type": {
+          "A": 0,
+          "AAAA": 0,
+          "CNAME": 0
+        },
+        "ipv4": [
+          "104.21.57.153",
+          "172.67.146.222"
+        ]
+      },
+      {
+        "hostname": "api-staging.maltworks.com.br",
+        "resolver": "google",
+        "status_by_type": {
+          "A": 0,
+          "AAAA": 0,
+          "CNAME": 0
+        },
+        "ipv4": [
+          "172.67.146.222",
+          "104.21.57.153"
+        ]
+      },
+      {
+        "hostname": "admin-staging.maltworks.com.br",
+        "resolver": "cloudflare",
+        "status_by_type": {
+          "A": 3,
+          "AAAA": 3,
+          "CNAME": 3
+        },
+        "ipv4": []
+      },
+      {
+        "hostname": "admin-staging.maltworks.com.br",
+        "resolver": "google",
+        "status_by_type": {
+          "A": 3,
+          "AAAA": 3,
+          "CNAME": 3
+        },
+        "ipv4": []
+      },
+      {
+        "hostname": "app-staging.maltworks.com.br",
+        "resolver": "cloudflare",
+        "status_by_type": {
+          "A": 3,
+          "AAAA": 3,
+          "CNAME": 3
+        },
+        "ipv4": []
+      },
+      {
+        "hostname": "app-staging.maltworks.com.br",
+        "resolver": "google",
+        "status_by_type": {
+          "A": 3,
+          "AAAA": 3,
+          "CNAME": 3
+        },
+        "ipv4": []
+      }
+    ],
+    "anonymous_http": [
+      {
+        "hostname": "api-staging.maltworks.com.br",
+        "path": "/",
+        "status": 302,
+        "tls_validation": true,
+        "redirect_followed": false,
+        "location": "https://sweet-violet-7f81.cloudflareaccess.com/cdn-cgi/access/login/api-staging.maltworks.com.br"
+      },
+      {
+        "hostname": "api-staging.maltworks.com.br",
+        "path": "/health",
+        "status": 302,
+        "tls_validation": true,
+        "redirect_followed": false,
+        "location": "https://sweet-violet-7f81.cloudflareaccess.com/cdn-cgi/access/login/api-staging.maltworks.com.br"
+      }
+    ],
+    "workers": [
+      {
+        "name": "maltworks-api-staging",
+        "version_id": "7a78a58f-842d-4524-981f-70bfd65374f8",
+        "workers_dev": false,
+        "preview_urls": false,
+        "routes": []
+      },
+      {
+        "name": "maltworks-admin-site-staging",
+        "version_id": "494d4f56-4d11-4b60-ba67-5678118b0cb3",
+        "workers_dev": false,
+        "preview_urls": false,
+        "routes": []
+      },
+      {
+        "name": "maltworks-cloud-site-staging",
+        "version_id": "e69b60de-04f9-470c-b322-ee27f70168ad",
+        "workers_dev": false,
+        "preview_urls": false,
+        "routes": []
+      }
+    ]
+  },
+  "visibility_limits": {
+    "dns_api_status": [
+      {
+        "hostname": "api-staging.maltworks.com.br",
+        "status": 403
+      },
+      {
+        "hostname": "admin-staging.maltworks.com.br",
+        "status": 403
+      },
+      {
+        "hostname": "app-staging.maltworks.com.br",
+        "status": 403
+      }
+    ],
+    "zone_access_api_status": 403,
+    "account_collections_returned_empty": [
+      "apps",
+      "reusable_policies",
+      "identity_providers",
+      "service_tokens"
+    ],
+    "gui_disproves_global_absence": true,
+    "root_cause": "not established; incomplete/different visibility, not evidence of absent resources",
+    "credentials_or_scopes_changed": false
+  },
+  "access_proposal": {
+    "applications": [
+      {
+        "operation": "retain and review existing application",
+        "id": "f5e112f8-df81-42f0-91c7-f0c4cda3da97",
+        "hostname": "api-staging.maltworks.com.br",
+        "human_policy": "preserve same single approved email",
+        "service_auth": "replace Lab policy association with new dedicated reusable policy and new token before hostname moves"
+      },
+      {
+        "operation": "prepare new exact-host application",
+        "id": null,
+        "hostname": "admin-staging.maltworks.com.br",
+        "human_policy": "new reusable policy with same existing single approved email, subject to review",
+        "service_auth": false
+      },
+      {
+        "operation": "prepare new exact-host application",
+        "id": null,
+        "hostname": "app-staging.maltworks.com.br",
+        "human_policy": "same new reusable human policy as Admin",
+        "service_auth": false
+      }
+    ],
+    "provider_id": "36e8b7b4-8513-4615-b35b-26d7a6bcce40",
+    "human_session_duration": "24h",
+    "allow_new_testers": false,
+    "allow_everyone": false,
+    "wildcard_domains": false,
+    "new_simulator_token": {
+      "name": "Maltworks Full Staging Simulator",
+      "id": null,
+      "created": false,
+      "proposed_duration": "168h",
+      "reused_from_lab": false,
+      "only_api_app": true
+    },
+    "cors": {
+      "proposal": "pass only OPTIONS to full API origin; actual requests remain protected by Access and Maltworks auth",
+      "applied": false,
+      "origin_allowlist": [
+        "https://admin-staging.maltworks.com.br",
+        "https://app-staging.maltworks.com.br"
+      ],
+      "worker_source": "src/http.ts",
+      "preflight_success_status": 204,
+      "foreign_origin_status": 403
+    },
+    "cookie_proposal": {
+      "http_only": true,
+      "same_site": "review Access Lax/None with login redirects; keep Maltworks mw_session Strict",
+      "prime_each_exact_host_before_fetch_ws": true
+    },
+    "full_api_readiness_required_before_access_changes": true,
+    "new_reusable_policies_only": true
+  },
+  "routing": {
+    "method_candidate": "project-local Wrangler 4.118.0 triggers deploy; experimental; only --dry-run used",
+    "candidates": [
+      {
+        "file": "full-api.triggers.jsonc",
+        "config": {
+          "$schema": "../maltworksapi/node_modules/wrangler/config-schema.json",
+          "account_id": "4e8c08f70722d344cf39c362a110d706",
+          "name": "maltworks-api-staging",
+          "compatibility_date": "2026-08-06",
+          "workers_dev": false,
+          "preview_urls": false,
+          "routes": [
+            {
+              "pattern": "api-staging.maltworks.com.br",
+              "custom_domain": true
+            }
+          ],
+          "triggers": {
+            "crons": [
+              "*/5 * * * *"
+            ]
+          }
+        },
+        "dry_run_passed": true,
+        "applied": false
+      },
+      {
+        "file": "rollback-lab.triggers.jsonc",
+        "config": {
+          "$schema": "../maltworksapi/node_modules/wrangler/config-schema.json",
+          "account_id": "4e8c08f70722d344cf39c362a110d706",
+          "name": "maltworks-api-lab-staging",
+          "compatibility_date": "2026-08-06",
+          "workers_dev": false,
+          "preview_urls": false,
+          "routes": [
+            {
+              "pattern": "api-staging.maltworks.com.br",
+              "custom_domain": true
+            }
+          ],
+          "triggers": {
+            "crons": [
+              "*/5 * * * *"
+            ]
+          }
+        },
+        "dry_run_passed": true,
+        "applied": false
+      },
+      {
+        "file": "admin.triggers.jsonc",
+        "config": {
+          "$schema": "../maltworksapi/node_modules/wrangler/config-schema.json",
+          "account_id": "4e8c08f70722d344cf39c362a110d706",
+          "name": "maltworks-admin-site-staging",
+          "compatibility_date": "2026-08-12",
+          "workers_dev": false,
+          "preview_urls": false,
+          "routes": [
+            {
+              "pattern": "admin-staging.maltworks.com.br",
+              "custom_domain": true
+            }
+          ],
+          "triggers": {
+            "crons": []
+          }
+        },
+        "dry_run_passed": true,
+        "applied": false
+      },
+      {
+        "file": "cloud.triggers.jsonc",
+        "config": {
+          "$schema": "../maltworksapi/node_modules/wrangler/config-schema.json",
+          "account_id": "4e8c08f70722d344cf39c362a110d706",
+          "name": "maltworks-cloud-site-staging",
+          "compatibility_date": "2026-11-10",
+          "workers_dev": false,
+          "preview_urls": false,
+          "routes": [
+            {
+              "pattern": "app-staging.maltworks.com.br",
+              "custom_domain": true
+            }
+          ],
+          "triggers": {
+            "crons": []
+          }
+        },
+        "dry_run_passed": true,
+        "applied": false
+      }
+    ],
+    "non_interactive_override_behavior_observed_in_installed_source": true,
+    "guard": "refresh domain ownership and Access policy snapshots, pin version/bindings and review exact one-host diff before any real command",
+    "detach_before_retarget": false,
+    "code_or_secret_republication_planned": false
+  },
+  "rollback": {
+    "baseline": {
+      "worker": "maltworks-api-lab-staging",
+      "version_id": "17cf9e1d-9c5e-4af4-9152-33edfa4a6b05",
+      "deployment_id": "732cae46-3776-4ce1-8b8d-ca47e8f42f37",
+      "database_id": "26b9ecab-1aaa-4120-93a5-1c409555d28b",
+      "realtime_namespace_id": "70f543b57d9747c1870e728977a3bc64",
+      "domain_record": {
+        "id": "bedf5485ada4bd1627b5e410f0dfff6a1a79e23b",
+        "hostname": "api-staging.maltworks.com.br",
+        "service": "maltworks-api-lab-staging",
+        "environment": "production",
+        "zone_id": "108c035cd334643e7bb933bffe3050e4",
+        "zone_name": "maltworks.com.br"
+      },
+      "access_application_id": "f5e112f8-df81-42f0-91c7-f0c4cda3da97",
+      "human_policy_id": "5824fe44-76ed-42f4-bb06-07b617589d4f",
+      "lab_service_policy_id": "f83d31ed-c98d-4edb-8fde-df184abdf42b",
+      "cron": [
+        "*/5 * * * *"
+      ]
+    },
+    "executed": false,
+    "target_recovery_minutes": 10,
+    "recovery_target_measured": false,
+    "steps": [
+      "Stop simulators; if Access protection fails, restore exact-host default-deny before retargeting; preserve Access applications",
+      "Retarget only api-staging back to the preserved Lab Worker; verify Lab version/D1/DO before restoring Lab service policy",
+      "Restore original Lab policy association and remove new simulator policy association; preserve human allowlist and compatible security tightening",
+      "Remove new frontend hostname associations or keep exact-host Access deny until reviewed; never remove Access while a hostname remains routed",
+      "Verify TLS, anonymous denial, authorized Lab health, mapping and bindings; preserve new staging data/credentials for investigation"
+    ],
+    "restore_security_weaker_cookie_settings_automatically": false,
+    "delete_database_bucket_namespace_or_worker": false,
+    "migrate_or_copy_data": false,
+    "note": "Code/domain rollback does not revert D1/R2/DO data; Lab and full staging remain independent. No rollback rehearsed remotely."
+  },
+  "verification": {
+    "before_after_domains_routes_workers_unchanged": true,
+    "cron_schedules_unchanged": true,
+    "private_flags_preserved": true,
+    "routing_config_dry_runs_passed": 4,
+    "local_ten_device_integration_test_passed": true,
+    "local_config_guard_tests_passed": 4,
+    "remote_browser_login_ws_simulation_tested": false,
+    "production_resources_changed": false
+  },
+  "remaining": [
+    "Approve the reviewed Access/routing window and snapshot complete live configuration before changes",
+    "Create new API-only service token securely and new reusable policies; do not version email/secret values",
+    "Apply exact-host Access protection and CORS preparation, then authorized API hostname transfer with immediate smoke/rollback gate",
+    "Activate protected frontend hostnames only after API smoke passes; prime Access cookies and test negative cases",
+    "Prepare QA users and run integrated remote simulation; retire Lab only after acceptance"
+  ]
+}

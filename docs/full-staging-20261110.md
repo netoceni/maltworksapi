@@ -8,6 +8,8 @@ O staging completo será o ambiente de homologação consolidado. Lab e hostname
 `api-staging` permanecem intactos até a transferência protegida e o aceite integrado.
 Execução local, preparação dos simuladores e pendências remotas:
 [validação integrada](staging-integrated-validation.md).
+DNS/Access conferidos no painel autenticado; proposta de proteção, transferência
+e retorno pronta, sem aplicação: [acesso e rollback](staging-access-cutover.md).
 API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 `netoceni/maltworkspanel`. As branches `prepare/full-staging-20261110` não alteram a main.
 
@@ -22,7 +24,7 @@ API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 | Anexos de lotes | R2 privado `maltworks-staging-batch-files` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
 | Admin | Worker estático `maltworks-admin-site-staging` | Publicado privadamente; versão `494d4f56-4d11-4b60-ba67-5678118b0cb3` |
 | Cloud do cliente | Worker estático `maltworks-cloud-site-staging` | Publicado privadamente; versão `e69b60de-04f9-470c-b322-ee27f70168ad` |
-| Acesso | Access nos três hostnames exatos | Auditar configuração existente e preparar política de testadores e simuladores |
+| Acesso | Access nos três hostnames exatos | Auditoria visível concluída; proposta de políticas, transferência e rollback preparada, sem aplicação |
 | Endereços | `admin-staging`, `app-staging`, `api-staging.maltworks.com.br` | Criar os dois primeiros custom domains; planejar transferência do terceiro |
 
 Todos os recursos ficam na mesma conta Cloudflare já usada pelo projeto
@@ -164,8 +166,9 @@ equivalentes revisadas nas aplicações existentes. Não criar wildcard para tod
 `maltworks.com.br` nem substituir a aplicação que já protege o Lab sem auditar escopo,
 precedência, políticas herdadas, audience e service tokens.
 
-Identidades ainda precisam ser escolhidas: lista explícita de testadores, IdP
-autorizado e service token exclusivo de staging para simuladores. Não há IDs,
+O painel confirmou uma regra humana com um único e-mail e um IdP de PIN por e-mail,
+além de dois tokens Lab. O plano propõe manter o mesmo testador e IdP, sem ampliar
+a lista; o token exclusivo da API completa ainda precisa ser criado. Não há
 e-mails ou segredos inventados em um payload executável. A política humana deve
 permitir apenas a lista aprovada; a política Service Auth deve aceitar apenas o token
 de staging. Sem Everyone, bypass geral ou credenciais de produção. Access complementa
@@ -180,6 +183,10 @@ métodos e headers necessários; requisições reais seguem autenticadas. Não u
 bypass de `/v1/*`, de WebSocket ou de toda a API para contornar falhas de login.
 Não colocar service token no JavaScript do Admin/Cloud. No simulador, usar armazenamento
 local protegido e headers Access, além da credencial do dispositivo simulado.
+O plano atual usa aplicações exatas separadas para os três hostnames, de modo que
+o token do simulador autorize apenas a API. Inclui aquecimento de cookies em cada
+host, HttpOnly e encaminhamento somente de OPTIONS à API completa. Detalhes,
+evidências visíveis e limites da credencial CLI em [staging-access-cutover.md](staging-access-cutover.md).
 
 ## Segredos e estado inicial
 
@@ -262,9 +269,10 @@ aceitar a nova pilha.
    `app-staging` e `admin-staging`, com certificado válido e DNS gerenciado pelo
    fluxo de custom domain. Não inventar CNAME para `workers.dev` desativado.
 7. Transferir explicitamente `api-staging` do Worker Lab para o novo Worker, com
-   janela e rollback aprovados. **Não** tentar simplesmente publicar uma segunda
-   associação sobre o domínio já ocupado. Após transferência revisada, gerar config
-   com `--with-domain`, revisar o diff e publicar apenas a API de staging.
+   janela e rollback aprovados. No Wrangler 4.118.0, uma execução sem TTY pode
+   substituir a associação existente sem perguntar: conferir owner, políticas e
+   diferença exata do hostname antes de executar qualquer mudança. O plano propõe
+   uma alteração de triggers, mantendo a versão da API, sem novo deploy de código.
    Preservar Worker, D1 e DO antigos do Lab. A transferência interrompe as sessões
    e simuladores que usavam o endereço antigo; planejar esse efeito mesmo sem hardware.
 8. Executar a matriz abaixo com sessões novas e dados de teste. Registrar SHA,
@@ -296,8 +304,10 @@ migrations; manter o novo banco separado evita afetar o Lab ou produção.
 
 - O endereço existente era Lab parcial, não staging completo; não reaproveitar seu
   D1/DO como se já contivesse a aplicação integrada.
-- Auditar Access/DNS requer mais leitura autorizada; proteção observada via HTTP
-  não comprova o escopo de todas as políticas.
+- A auditoria visível de Access/DNS foi concluída pelo painel autenticado. A CLI
+  continua com 403 para DNS/Access da zona e listas vazias no escopo da conta que
+  contradizem o painel. Não inferir ausência de proteção dessas listas. Snapshot
+  integral e reconferência do estado são pré-condições da futura aplicação.
 - Cloud foi localizado em `maltworkspanel`; a configuração de staging foi preparada
   no [Cloud #12](https://github.com/netoceni/maltworkspanel/pull/12).
   A pendência de dependências foi resolvida pelo
@@ -320,7 +330,9 @@ Após a incorporação do Cloud #13 ao #12, a pendência de dependências deixa 
 bloquear a preparação desse conjunto. A criação do D1/R2 também foi concluída.
 As migrations 0001–0018 no banco novo também estão concluídas e validadas.
 Os três secrets estão preparados localmente e cadastrados na API publicada privadamente,
-com DO SQLite exclusivo. Continuam pendentes auditoria DNS/Access e contas de teste,
+com DO SQLite exclusivo. Auditoria visível DNS/Access concluída; plano de proteção,
+transferência e rollback preparado, sem aplicar. Continuam pendentes reconferência
+e aprovação da janela, configuração Access/token exclusivo e contas de teste,
 proteção/ativação dos domínios e
 transferência de `api-staging`, seguida de validação com controladores simulados.
 API, Admin e Cloud de staging já foram publicados privadamente. Não houve merge na

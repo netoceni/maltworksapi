@@ -6,6 +6,10 @@ API, Admin e Cloud foram publicados privadamente na conta
 `4e8c08f70722d344cf39c362a110d706`. Workers.dev, previews e rotas dos três
 estão desativados. Publicar os assets não conectou os navegadores à nova API:
 `api-staging.maltworks.com.br` ainda atende o Lab antigo.
+DNS e Access foram conferidos pelo painel autenticado. O
+[plano de acesso protegido, transferência e rollback](staging-access-cutover.md)
+preserva o único testador e IdP já existentes, prevê token novo somente na API,
+CORS/OPTIONS e cookies entre os três hosts. Nenhuma configuração foi aplicada.
 
 | Componente | Código publicado | Versão ativa |
 | --- | --- | --- |
@@ -54,8 +58,8 @@ execução das versões publicadas. Não foram usados secrets ou dados remotos.
 
 ## Preparação da próxima execução remota
 
-1. Reconfirmar conta, três versões, D1/DO/R2 e configurações privadas. Auditar
-   DNS/Access com permissão de leitura suficiente e aprovar identidades dos
+1. Reconfirmar conta, três versões, D1/DO/R2 e configurações privadas. Atualizar o
+   snapshot DNS/Access conforme a auditoria e o plano de retorno e revisar identidades dos
    testadores e credenciais exclusivas do simulador. Definir acesso privado ou
    protegido e revisar rollback antes de qualquer alteração de acesso.
 2. Se forem usados os hostnames de staging, proteger os três antes de ativá-los.
@@ -115,6 +119,7 @@ pendente, não sucesso da execução ativa. O soak longo é etapa posterior ao s
   acesso; não adicionar um Worker intermediário só para contornar isso.
 - Sem endpoint privado/protegido preparado, nenhum HTTP/WS/navegador remoto foi
   executado. Nenhuma conta ou credencial de simulador remoto foi criada nesta etapa.
+  A auditoria de DNS/Access foi somente leitura; não é execução da matriz remota.
 - A decisão é usar o staging completo como único ambiente de homologação. O Lab
   antigo permanece intacto até o aceite integrado e um plano específico de retirada.
   Nenhum novo ambiente foi criado além dos dois frontends já previstos.
