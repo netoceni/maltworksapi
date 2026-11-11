@@ -1,0 +1,146 @@
+{
+  "verified_at": "2026-11-11T01:04:24.186Z",
+  "account_id": "4e8c08f70722d344cf39c362a110d706",
+  "authorization": "Private Admin and Cloud publication; prepare integrated simulation, no public domains or main merge",
+  "consolidation": {
+    "target": "full staging",
+    "legacy_lab_preserved": true,
+    "legacy_lab_retired": false,
+    "api_staging_hostname_still_on_lab": true,
+    "live_frontend_api_integration_tested": false
+  },
+  "workers": [
+    {
+      "name": "maltworks-admin-site-staging",
+      "repository": "netoceni/maltworksadmin",
+      "source_commit": "02fa706bbe3e68b2e5fba87d4a0123483da39984",
+      "version_id": "494d4f56-4d11-4b60-ba67-5678118b0cb3",
+      "deployment_id": "45e3a6ed-3a32-4e9a-ac65-4fe2c5bdd888",
+      "deployed_at": "2026-11-11T01:03:27.236666Z",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "custom_domains": [],
+      "data_or_secret_bindings": [],
+      "schedules": [],
+      "assets_served_directly": true,
+      "uploaded_asset_files": 3,
+      "source_assets": [
+        {
+          "path": "app.js",
+          "sha256": "209d8d7e38c0a9098d7d7ef2ea67dc0ecabbb8d7d318a85d3ae4ac7200a8d220"
+        },
+        {
+          "path": "index.html",
+          "sha256": "2ade0f16333a929e969bfa1d0c5392d45d8e61a2f72282099eaff79e5726a100"
+        },
+        {
+          "path": "styles.css",
+          "sha256": "4cfcaf62e2d0ae104dc66e778127125e9037d53658861c2bef3e03319c5e3136"
+        }
+      ],
+      "security_headers_match_local_source": true,
+      "asset_contents_fetched_remotely": false,
+      "local_tests_passed": 9,
+      "dry_run_passed": true,
+      "observability": {
+        "declared_in_config": true,
+        "remote_metadata_confirms_logging": false,
+        "note": "Assets-only versions serve directly; settings/version metadata omit observability. Runtime logging/traces have not been demonstrated."
+      }
+    },
+    {
+      "name": "maltworks-cloud-site-staging",
+      "repository": "netoceni/maltworkspanel",
+      "source_commit": "0c69022299433b4830a88a18eb90fae39c72e7bd",
+      "version_id": "e69b60de-04f9-470c-b322-ee27f70168ad",
+      "deployment_id": "da59bf45-2627-4968-91a3-38c05e2b6f06",
+      "deployed_at": "2026-11-11T01:04:05.071107Z",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "custom_domains": [],
+      "data_or_secret_bindings": [],
+      "schedules": [],
+      "assets_served_directly": true,
+      "uploaded_asset_files": 5,
+      "source_assets": [
+        {
+          "path": "app-5.13.0.js",
+          "sha256": "7d1fba1c6c92a9740755a95dd8259e2e5a3782ee2b19a2c0850a5fdb01770b27"
+        },
+        {
+          "path": "app-5.19.0.js",
+          "sha256": "6db4d98227e8b6784a2ca6063d8c2725bb50ff9e207c1611bdf66a8724f6f940"
+        },
+        {
+          "path": "favicon.svg",
+          "sha256": "37b4d6b17b7b1a7a0ab36e65db038f30b4850345310876f9fe959ecd2d070cff"
+        },
+        {
+          "path": "index.html",
+          "sha256": "cfbba9c4898a984d863d11ab56bb6c9d1007eeb70c2b455936147002b86778e4"
+        },
+        {
+          "path": "styles-5.13.0.css",
+          "sha256": "05d4035f0f6f009bf44a7b7cdb8c36bf226869163106ef06f7c61167c3f7a371"
+        }
+      ],
+      "security_headers_match_local_source": true,
+      "asset_contents_fetched_remotely": false,
+      "local_tests_passed": 9,
+      "dry_run_passed": true,
+      "observability": {
+        "declared_in_config": true,
+        "remote_metadata_confirms_logging": false,
+        "note": "Assets-only versions serve directly; settings/version metadata omit observability. Runtime logging/traces have not been demonstrated."
+      }
+    }
+  ],
+  "api": {
+    "name": "maltworks-api-staging",
+    "version_id": "7a78a58f-842d-4524-981f-70bfd65374f8",
+    "database_id": "5151e251-52c1-4406-8ae9-c6d38961d124",
+    "realtime_namespace_id": "a7eef169f38d4a2d850c4bbed602f043",
+    "redeployed": false
+  },
+  "verification": {
+    "all_previous_worker_inventory_unchanged": true,
+    "protected_worker_metadata_unchanged": [
+      "maltworks-api-staging",
+      "maltworks-api",
+      "maltworks-api-lab-staging",
+      "maltworks-admin-site"
+    ],
+    "all_durable_object_namespaces_unchanged": true,
+    "pages_projects_and_production_deployments_unchanged": true,
+    "custom_domains_and_zone_routes_unchanged": true,
+    "local_api_typecheck_passed": true,
+    "local_worker_tests_passed": 84,
+    "local_node_tests_passed": 38,
+    "remote_http_ws_browser_e2e_tested": false,
+    "remote_accounts_or_devices_created": false,
+    "d1_migrations_executed": false,
+    "secrets_read_or_rotated": false
+  },
+  "findings": [
+    "api-staging still targets legacy Lab; do not send integrated remote simulation there before approved cutover and resource confirmation.",
+    "Admin only recognizes its exact staging hostname; localhost or an arbitrary alias defaults to the production API. Do not use those for integrated browser testing.",
+    "Cloud localhost selects the local API; arbitrary aliases default to production. Staging-host selection is tested locally, not a remote browser session.",
+    "Plan provisioning/subscriptions are not exposed through an administrative plan-management API yet; remote QA grants/downgrades require a reviewed staging-only seed.",
+    "Bootstrap requires zero existing users; create the test superadmin before other remote signup fixtures.",
+    "Initial local loopback tests were denied by the execution restriction; rerun with local networking passed all checks without source changes."
+  ],
+  "remaining": [
+    "Audit Access/DNS/approved test identities and choose protected or private runtime access",
+    "Authorize protected hostname cutover after access controls and rollback are reviewed",
+    "Provision fresh staging-only test users, grants and simulator credentials",
+    "Run remote integrated browser/HTTP/WS/R2/plan/downgrade matrix",
+    "Verify runtime observability on static-only frontends",
+    "Retire legacy Lab only after full staging acceptance"
+  ],
+  "main_merged": false,
+  "production_deployed": false,
+  "public_domains_activated": false,
+  "dns_or_access_changed": false
+}

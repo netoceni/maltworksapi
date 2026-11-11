@@ -10,7 +10,8 @@ $Files = @(
     (Join-Path $PSScriptRoot "07-estabilidade-integrada-lab.ps1"),
     (Join-Path $PSScriptRoot "08-transferir-lab-entre-pcs.ps1"),
     (Join-Path $PSScriptRoot "09-preparar-desktop-lab.ps1"),
-    (Join-Path $PSScriptRoot "10-auditar-http-lab.ps1")
+    (Join-Path $PSScriptRoot "10-auditar-http-lab.ps1"),
+    (Join-Path $PSScriptRoot "prepare-app-staging-secrets.ps1")
 )
 foreach ($File in $Files) {
     $Tokens = $null

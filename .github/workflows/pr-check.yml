@@ -29,7 +29,7 @@ jobs:
       - name: Run tests against isolated D1
         run: npm test
       - name: Verify patched emulator dependencies
-        run: node --test scripts/dependency-compatibility.spec.mjs
+        run: node --test scripts/dependency-compatibility.spec.mjs scripts/full-staging-config.spec.mjs
       - name: Test internal Maltworks Lab and staging security gates
         run: node --test scripts/maltworks-lab*.spec.mjs
       - name: Smoke-test local SQLite fleet simulator
@@ -75,7 +75,7 @@ jobs:
       - name: Run all Worker tests, including Lab contract and WebSocket regressions
         run: npm test
       - name: Verify patched emulator dependencies
-        run: node --test scripts/dependency-compatibility.spec.mjs
+        run: node --test scripts/dependency-compatibility.spec.mjs scripts/full-staging-config.spec.mjs
       - name: Test internal Maltworks Lab and staging security gates
         run: node --test scripts/maltworks-lab*.spec.mjs
       - name: Regression for an unresponsive WebSocket close handshake

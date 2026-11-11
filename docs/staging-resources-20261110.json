@@ -1,0 +1,182 @@
+{
+  "checked_at": "2026-11-10T23:56:31.622513+00:00",
+  "account_id": "4e8c08f70722d344cf39c362a110d706",
+  "cli": "project-local Wrangler 4.118.0",
+  "credential_source": "Existing Wrangler OAuth; whoami/account and inventories checked before creation; no auth changes",
+  "d1": {
+    "name": "maltworks-app-staging",
+    "uuid": "5151e251-52c1-4406-8ae9-c6d38961d124",
+    "binding": "DB",
+    "created_at": "2026-11-10T23:38:33.953Z",
+    "region": "ENAM",
+    "read_replication": "disabled",
+    "reported_size_bytes": 12288,
+    "creation_schema_read": {
+      "tables_and_views": [
+        {
+          "name": "_cf_KV",
+          "type": "table"
+        }
+      ],
+      "rows_written": 0,
+      "changed_db": false,
+      "application_schema_present": false,
+      "migrations_table_present": false
+    },
+    "schema_validation": {
+      "application_tables": 36,
+      "explicit_indexes": 40,
+      "ddl_mismatches": [],
+      "quick_check": "ok",
+      "total_application_rows": 0
+    },
+    "applied_migrations": [
+      "0001_initial.sql",
+      "0002_device_commands.sql",
+      "0003_cloud_recipes.sql",
+      "0004_device_configuration.sql",
+      "0005_fermentation_tracking.sql",
+      "0006_sales_leads.sql",
+      "0007_user_signup.sql",
+      "0008_system_admins.sql",
+      "0009_device_preferences.sql",
+      "0010_notification_center.sql",
+      "0011_notification_dismissals.sql",
+      "0012_managed_ota.sql",
+      "0013_batch_management.sql",
+      "0014_presale_leads.sql",
+      "0015_telemetry_retention_index.sql",
+      "0016_d1_health_daily.sql",
+      "0017_intelligent_history.sql",
+      "0018_organization_history_plans.sql"
+    ],
+    "pending_migrations": [],
+    "migration_evidence": "staging-migrations-0001-0018.json"
+  },
+  "r2": [
+    {
+      "name": "maltworks-staging-firmware",
+      "binding": "FIRMWARE",
+      "created_at": "2026-11-10T23:38:58.947Z",
+      "location": "ENAM",
+      "storage_class": "Standard",
+      "object_count": 0,
+      "reported_size": "0 B",
+      "r2_dev_enabled": false,
+      "custom_domains": [],
+      "verified_at": "2026-11-10T23:44:01.255Z"
+    },
+    {
+      "name": "maltworks-staging-batch-files",
+      "binding": "BATCH_FILES",
+      "created_at": "2026-11-10T23:40:07.683Z",
+      "location": "ENAM",
+      "storage_class": "Standard",
+      "object_count": 0,
+      "reported_size": "0 B",
+      "r2_dev_enabled": false,
+      "custom_domains": [],
+      "verified_at": "2026-11-10T23:44:01.255Z"
+    }
+  ],
+  "existing_resources": {
+    "all_previous_d1_ids_and_names_preserved": true,
+    "production_config_d1": {
+      "name": "maltworks-recovery-20261027",
+      "uuid": "a1bf5a75-1bec-4437-92fa-64e69c3da081"
+    },
+    "lab_d1": {
+      "name": "maltworks-lab-staging",
+      "uuid": "26b9ecab-1aaa-4120-93a5-1c409555d28b"
+    },
+    "legacy_named_production_d1": {
+      "name": "maltworks-production",
+      "uuid": "134f4884-ba6e-4f6d-88ef-7b3b021c944d"
+    },
+    "production_r2_preserved": [
+      "maltworks-firmware",
+      "maltworks-batch-files"
+    ]
+  },
+  "events": [
+    {
+      "resource": "maltworks-staging-batch-files",
+      "first_attempt": "Cloudflare internal error 10001",
+      "recovery": "Read inventory confirmed absence; one retry succeeded"
+    }
+  ],
+  "private_config": {
+    "file": "wrangler.app-staging.jsonc",
+    "generated_locally": true,
+    "git_ignored": true,
+    "public_routes": [],
+    "uploaded": true
+  },
+  "worker_deployments": 3,
+  "main_merges": 0,
+  "object_uploads": 0,
+  "dns_or_access_changed": false,
+  "remaining": [
+    "Approve the reviewed Access/routing window and snapshot complete live configuration before changes",
+    "Create new API-only service token securely and new reusable policies; do not version email/secret values",
+    "Apply exact-host Access protection and CORS preparation, then authorized API hostname transfer with immediate smoke/rollback gate",
+    "Activate protected frontend hostnames only after API smoke passes; prime Access cookies and test negative cases",
+    "Prepare QA users and run integrated remote simulation; retire Lab only after acceptance"
+  ],
+  "creation_checked_at": "2026-11-10T23:44:01.255Z",
+  "creation_authorization": "User authorized only staging D1 and R2 creation; no migrations, main merge or deployment",
+  "authorization": "First private API staging publication with prepared secrets and isolated DO; no public domains and no main merge",
+  "secrets_prepared_locally": true,
+  "secrets_registered_cloudflare": true,
+  "secrets_preparation_report": "staging-secrets-preparation.json",
+  "api_worker": {
+    "name": "maltworks-api-staging",
+    "version_id": "7a78a58f-842d-4524-981f-70bfd65374f8",
+    "deployment_id": "28f2a228-f6df-4226-9358-73c566c8b721",
+    "workers_dev": false,
+    "preview_urls": false,
+    "public_routes": []
+  },
+  "realtime": {
+    "binding": "REALTIME",
+    "namespace_id": "a7eef169f38d4a2d850c4bbed602f043",
+    "class_name": "RealtimeHub",
+    "script": "maltworks-api-staging",
+    "use_sqlite": true,
+    "migration_tag": "v1-realtime-app-staging",
+    "isolated_from_production_and_lab": true,
+    "instance_invocation_tested": false
+  },
+  "publication_evidence": "staging-private-publication.json",
+  "static_publication_checked_at": "2026-11-11T01:04:24.186Z",
+  "static_workers": [
+    {
+      "name": "maltworks-admin-site-staging",
+      "source_commit": "02fa706bbe3e68b2e5fba87d4a0123483da39984",
+      "version_id": "494d4f56-4d11-4b60-ba67-5678118b0cb3",
+      "deployment_id": "45e3a6ed-3a32-4e9a-ac65-4fe2c5bdd888",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "data_or_secret_bindings": []
+    },
+    {
+      "name": "maltworks-cloud-site-staging",
+      "source_commit": "0c69022299433b4830a88a18eb90fae39c72e7bd",
+      "version_id": "e69b60de-04f9-470c-b322-ee27f70168ad",
+      "deployment_id": "da59bf45-2627-4968-91a3-38c05e2b6f06",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "data_or_secret_bindings": []
+    }
+  ],
+  "static_publication_evidence": "staging-static-publication.json",
+  "integrated_validation_plan": "staging-integrated-validation.md",
+  "access_dns_checked_at": "2026-11-11T01:28:03.784Z",
+  "access_dns_visible_audit_complete": true,
+  "access_cutover_plan": "staging-access-cutover.md",
+  "access_cutover_evidence": "staging-access-cutover-plan.json",
+  "access_or_hostname_changes_applied": false,
+  "access_preparation_authorization": "Read-only DNS/Access verification and preparation of protected access, hostname transfer and rollback; no activation or main merge"
+}
