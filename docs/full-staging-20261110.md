@@ -156,12 +156,24 @@ local protegido e headers Access, além da credencial do dispositivo simulado.
 
 ## Segredos e estado inicial
 
-Gerar valores novos e exclusivos de `PASSWORD_PEPPER`, `PASSWORD_RESET_SECRET` e
-`BOOTSTRAP_SECRET`. Armazenar no gerenciador seguro e no Worker de staging em etapa
-posterior autorizada. Nunca versionar valores ou copiá-los da produção/Lab.
-`wrangler secret put` publica versão imediatamente; não usá-lo durante esta preparação.
-Planejar entrada de secrets via versões não publicadas e publicação privada coordenada.
-Arquivos locais de segredos não são enviados automaticamente para o Worker.
+**Preparação local concluída:** `PASSWORD_PEPPER`, `PASSWORD_RESET_SECRET` e
+`BOOTSTRAP_SECRET` novos, distintos e exclusivos da API de staging. Cada valor tem
+256 bits de aleatoriedade criptográfica, protegido por DPAPI CurrentUser fora dos
+repositórios, com ACL privada e validação de recuperação. Nenhum valor foi exibido,
+versionado, exportado em texto ou enviado ao Cloudflare. O helper local verifica
+também a ausência dos valores no índice Git e não rotaciona um cofre existente.
+
+**Cadastro remoto pendente:** leitura de `versions list` confirmou que
+`maltworks-api-staging` ainda não existe (10007). `versions secret bulk` aceita stdin
+e cria uma versão sem ativar tráfego, mas exige versão base. A config contém migration
+inicial de DO; com Wrangler 4.118.0, não presumir que upload-only inicializa essa
+pilha. A primeira criação/publicação privada continua dependendo de autorização.
+Não usar `secret put/bulk` normal, o botão Deploy ou o script antigo de segredos do Lab.
+Nenhum upload, Worker placeholder, versão, secret remoto ou deploy foi criado aqui.
+
+Procedimento, limites e validações em [staging-secrets.md](staging-secrets.md);
+[registro sem valores](staging-secrets-preparation.json). Arquivos locais cifrados
+não são enviados automaticamente ao Worker; preservar o perfil/chaves DPAPI do usuário.
 
 Após as migrations no novo banco: cadastrar contas de teste e organização de cada
 plano; promover somente o administrador de teste pelo fluxo bootstrap existente;
@@ -213,9 +225,11 @@ aceitar a nova pilha.
    `5151e251-52c1-4406-8ae9-c6d38961d124`, com `wrangler.app-staging.jsonc`.
    Não reaplicar manualmente nem usar `db:migrate:remote` padrão (seleciona produção).
    Qualquer futura migration fora desse intervalo precisa de autorização própria.
-5. Preparar novos secrets e publicar os três Workers com configs privadas;
-   a primeira publicação da API cria o namespace DO próprio. Não executar scripts
-   npm `deploy` padrão. Confirmar metadados e ausência de URLs públicas.
+5. **Concluído: secrets exclusivos preparados somente no cofre local.** Pendentes:
+   cadastro remoto, primeira publicação dos três Workers com configs privadas e
+   namespace DO próprio. Revisar a sequência inicial de versão/DO/secrets antes de
+   autorizar; não executar scripts npm `deploy` padrão. Confirmar metadados e
+   ausência de URLs públicas na etapa de publicação futura.
 6. Configurar/auditar Access antes de ativar hostnames. Criar os custom domains
    `app-staging` e `admin-staging`, com certificado válido e DNS gerenciado pelo
    fluxo de custom domain. Não inventar CNAME para `workers.dev` desativado.
@@ -277,7 +291,8 @@ sobrescritos. A geração lê a estrutura da config, não confirma IDs remotos.
 Após a incorporação do Cloud #13 ao #12, a pendência de dependências deixa de
 bloquear a preparação desse conjunto. A criação do D1/R2 também foi concluída.
 As migrations 0001–0018 no banco novo também estão concluídas e validadas.
-Continuam pendentes auditoria DNS/Access, secrets e contas de teste,
+Os três secrets também estão preparados localmente, sem cadastro remoto.
+Continuam pendentes auditoria DNS/Access, cadastro remoto dos secrets e contas de teste,
 publicação privada e namespace DO, proteção/ativação dos domínios e
 transferência de `api-staging`, seguida de validação com controladores simulados.
 Não houve deploy, merge na main ou alteração de outro D1/R2. O checklist

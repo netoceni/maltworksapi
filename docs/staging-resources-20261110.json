@@ -115,10 +115,10 @@
   "worker_deployments": 0,
   "main_merges": 0,
   "object_uploads": 0,
-  "secrets_created": false,
   "dns_or_access_changed": false,
   "remaining": [
-    "New staging secrets and test accounts",
+    "Remote registration of prepared secrets and initial private Worker/base version",
+    "Test accounts",
     "Audit Access/DNS and approved identities",
     "Private Worker publication and own DO namespace",
     "Protected hostname activation and api-staging cutover",
@@ -126,5 +126,8 @@
   ],
   "creation_checked_at": "2026-11-10T23:44:01.255Z",
   "creation_authorization": "User authorized only staging D1 and R2 creation; no migrations, main merge or deployment",
-  "authorization": "Exactly migrations 0001-0018 on staging 5151e251-52c1-4406-8ae9-c6d38961d124; no main merge or deployment"
+  "authorization": "Local staging secrets preparation and read-only Cloudflare research; no upload, main merge or deployment",
+  "secrets_prepared_locally": true,
+  "secrets_registered_cloudflare": false,
+  "secrets_preparation_report": "staging-secrets-preparation.json"
 }

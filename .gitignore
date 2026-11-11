@@ -17,3 +17,7 @@ wrangler.retention-disposable.jsonc
 # Reviewed, generated full-staging config (never secrets)
 wrangler.app-staging.jsonc
 .dev.vars.app-staging
+
+# Never version copies of Windows-protected secret vaults
+*.dpapi
+*.dpapi.json
