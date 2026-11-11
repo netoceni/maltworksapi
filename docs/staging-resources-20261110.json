@@ -110,24 +110,42 @@
     "generated_locally": true,
     "git_ignored": true,
     "public_routes": [],
-    "uploaded": false
+    "uploaded": true
   },
-  "worker_deployments": 0,
+  "worker_deployments": 1,
   "main_merges": 0,
   "object_uploads": 0,
   "dns_or_access_changed": false,
   "remaining": [
-    "Remote registration of prepared secrets and initial private Worker/base version",
-    "Test accounts",
-    "Audit Access/DNS and approved identities",
-    "Private Worker publication and own DO namespace",
-    "Protected hostname activation and api-staging cutover",
-    "Remote browser/device-simulator validation"
+    "Publish Admin and Cloud privately under separate authorization",
+    "Audit Access/DNS and approved tester identities/service tokens",
+    "Create test accounts/organizations/simulated devices",
+    "Activate protected hostnames and explicitly cut over api-staging from Lab",
+    "Run remote HTTP/WebSocket/R2/plan/simulator and recovery validations"
   ],
   "creation_checked_at": "2026-11-10T23:44:01.255Z",
   "creation_authorization": "User authorized only staging D1 and R2 creation; no migrations, main merge or deployment",
-  "authorization": "Local staging secrets preparation and read-only Cloudflare research; no upload, main merge or deployment",
+  "authorization": "First private API staging publication with prepared secrets and isolated DO; no public domains and no main merge",
   "secrets_prepared_locally": true,
-  "secrets_registered_cloudflare": false,
-  "secrets_preparation_report": "staging-secrets-preparation.json"
+  "secrets_registered_cloudflare": true,
+  "secrets_preparation_report": "staging-secrets-preparation.json",
+  "api_worker": {
+    "name": "maltworks-api-staging",
+    "version_id": "7a78a58f-842d-4524-981f-70bfd65374f8",
+    "deployment_id": "28f2a228-f6df-4226-9358-73c566c8b721",
+    "workers_dev": false,
+    "preview_urls": false,
+    "public_routes": []
+  },
+  "realtime": {
+    "binding": "REALTIME",
+    "namespace_id": "a7eef169f38d4a2d850c4bbed602f043",
+    "class_name": "RealtimeHub",
+    "script": "maltworks-api-staging",
+    "use_sqlite": true,
+    "migration_tag": "v1-realtime-app-staging",
+    "isolated_from_production_and_lab": true,
+    "instance_invocation_tested": false
+  },
+  "publication_evidence": "staging-private-publication.json"
 }

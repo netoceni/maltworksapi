@@ -1,4 +1,4 @@
-# Segredos da API de staging — preparados localmente, sem publicação
+# Segredos da API de staging — cadastrados na API publicada privadamente
 
 Foram preparados valores novos e independentes para `PASSWORD_PEPPER`,
 `PASSWORD_RESET_SECRET` e `BOOTSTRAP_SECRET`, exclusivos de `maltworks-api-staging`,
@@ -13,7 +13,9 @@ O cofre fica fora dos repositórios:
 `%LOCALAPPDATA%\Maltworks\api-staging\api-staging-secrets.dpapi.json`.
 Contém somente metadados e payload cifrado por Windows DPAPI `CurrentUser`, com
 contexto de conta/Worker/D1 e ACL restrita ao usuário atual e SYSTEM. Não há arquivo
-plaintext de secrets, `.dev.vars` ou `.env` gerado por esta preparação. Valores,
+plaintext permanente de secrets, `.dev.vars` ou `.env` gerado pela preparação. Na
+publicação autorizada, o `--secrets-file` consumiu um JSON temporário com ACL privada,
+fora dos repositórios; ele e os logs temporários foram removidos no finally. Valores,
 ciphertext e fingerprints de valores não são incluídos no relatório, Git ou chat.
 
 O helper `scripts/prepare-app-staging-secrets.ps1` não usa rede, Wrangler ou comandos
@@ -35,17 +37,33 @@ portável; cópia para outro perfil não garante recuperação. Não rotacionar 
 após criar contas sem planejar a compatibilidade das senhas. A preparação pode ser
 repetida para validar o mesmo cofre, sem regeneração automática.
 
-## Cadastro Cloudflare sem ativar tráfego
+## Primeira publicação privada concluída
 
-A conta foi reconferida. A consulta somente de leitura
-`versions list --name maltworks-api-staging --config wrangler.app-staging.jsonc --json`
-retornou **10007: Worker inexistente**. Não houve tentativa de cadastrar os valores,
-criar Worker/versão, alterar secrets remotos ou executar deploy.
+A conta e os recursos foram reconferidos. O Worker inexistente na preparação foi
+criado pela primeira publicação privada autorizada, incluindo os três secrets e a
+migration `v1-realtime-app-staging` do DO SQLite, com Wrangler 4.118.0 e
+`deploy --config wrangler.app-staging.jsonc --secrets-file`.
+Versão `7a78a58f-842d-4524-981f-70bfd65374f8`; namespace DO
+`a7eef169f38d4a2d850c4bbed602f043`, exclusivo do script de staging.
+Metadados remotos confirmaram os três nomes como `secret_text`, sem leitura dos
+valores. Não houve rotação do cofre, exposição/versionamento de valores ou cadastro
+de contas. `workers_dev=false`, `preview_urls=false`, nenhum custom domain ou route
+da nova API; produção/Lab e mapeamentos públicos permaneceram iguais.
+Evidências: [staging-private-publication.json](staging-private-publication.json).
+
+O ensaio com valores fictícios passou antes do envio real. O processo leu o cofre
+DPAPI apenas em memória, gravou a entrada efêmera em diretório restrito ao usuário
+e SYSTEM, suprimiu/redigiu valores de saídas e limpou arquivos no encerramento.
+`WRANGLER_LOG_SANITIZE=true` permaneceu ativo. O helper de preparação continua
+somente local: seu campo `cloudflare_upload_performed=false` descreve o helper,
+não substitui o estado remoto registrado no inventário de publicação.
+
+## Futuras alterações sem ativação imediata
 
 No Wrangler local **4.118.0**, `versions secret bulk` recebe JSON por stdin e cria
-uma nova versão, sem ativá-la. Requer uma versão base já enviada; o código local
-trata ausência de versões como erro 10222. A inclusão dos três segredos juntos evita
-três versões parciais. A forma futura, somente após a versão base existir, é:
+uma nova versão, sem ativá-la. A versão base agora existe. A inclusão coordenada
+dos segredos evita versões parciais; não executar para esta publicação já concluída.
+A forma futura é:
 
 ```powershell
 $env:CLOUDFLARE_ACCOUNT_ID = '4e8c08f70722d344cf39c362a110d706'
@@ -64,23 +82,21 @@ Depois de cadastrar, verificar os nomes na versão retornada e confirmar que o
 deployment ativo não mudou. `versions secret list` lista secrets atualmente
 publicados e, sozinho, não comprova o conteúdo de uma versão ainda não ativada.
 
-**Primeiro Worker ainda é uma etapa pendente.** A API tem a migration inicial de DO
-`v1-realtime-app-staging`. A documentação exige publicação para aplicar migrations
-de Durable Objects e registra a limitação de upload-only no Wrangler anterior a
-4.131.0. Portanto, não tratar `versions upload --secrets-file` como um atalho já
-validado para inicializar esta pilha, nem criar Worker placeholder, publicar código,
-aplicar a migration de DO ou atualizar Wrangler nesta tarefa. Nenhuma dessas ações
-foi executada. A primeira criação/publicação privada precisa de autorização própria.
+A primeira publicação aplicou a migration inicial de DO pela via suportada de deploy.
+Não foi feito upload-only/placeholder nem atualização do Wrangler. Futuras migrations
+de DO continuam exigindo revisão do ciclo de publicação; a existência desta versão
+base não autoriza migrações, rotação de secrets ou ativação de tráfego automaticamente.
 
 Não usar `wrangler secret put`, `secret bulk` sem `versions`, `secret delete` ou o
 botão Deploy do painel para esta preparação: esses fluxos podem publicar
 imediatamente. Não usar a etapa `Segredos` de `01-provisionar-staging.ps1`, que é do
 Lab antigo e utiliza o fluxo de publicação imediata.
 
-O estado correto é **preparado localmente / cadastro remoto pendente**. O código
-da API e seus bindings não foram alterados nesta etapa.
-Continuam pendentes contas de teste, DNS/Access, primeira publicação privada/DO,
-ativação de domínios e testes remotos com simuladores.
+O estado correto é **cofre local preservado / secrets cadastrados / API e DO privados
+publicados**. O código da aplicação não foi alterado para efetuar a publicação.
+Continuam pendentes contas de teste, DNS/Access, Admin/Cloud, ativação de domínios
+protegidos e testes remotos com simuladores. Sem URL pública, não foi feito health
+HTTP/WebSocket remoto; não abrir endpoint para contornar essa limitação.
 
 Referências oficiais:
 [secrets em Workers](https://developers.cloudflare.com/workers/configuration/secrets/),

@@ -1,8 +1,9 @@
 # Staging completo de Admin + Cloud + API — preparação de 10/11/2026
 
-Status: configurações preparadas, D1/R2 exclusivos criados e migrations 0001–0018
-aplicadas somente ao D1 de staging autorizado. Schema validado, sem dados da aplicação.
-Nenhum Worker foi publicado e a main continua sem merge.
+Status: API de staging publicada privadamente, com os três secrets e namespace DO
+SQLite exclusivos, D1/R2 isolados e migrations 0001–0018 previamente validadas.
+Workers.dev, previews, routes e custom domains continuam desativados para a nova API.
+Admin/Cloud ainda não foram publicados em staging; a main continua sem merge.
 API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 `netoceni/maltworkspanel`. As branches `prepare/full-staging-20261110` não alteram a main.
 
@@ -10,9 +11,9 @@ API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 
 | Componente | Recurso exclusivo | Situação / ação futura |
 | --- | --- | --- |
-| API completa | Worker `maltworks-api-staging` | Publicar código da integração com config própria |
+| API completa | Worker `maltworks-api-staging` | Publicado privadamente; versão `7a78a58f-842d-4524-981f-70bfd65374f8` |
 | Banco | D1 `maltworks-app-staging` | `5151e251-52c1-4406-8ae9-c6d38961d124`; 0001–0018 aplicadas e schema validado |
-| Tempo real | DO SQLite `RealtimeHub` do novo Worker | Criado na primeira publicação pela migration `v1-realtime-app-staging` |
+| Tempo real | DO SQLite `RealtimeHub` do novo Worker | Namespace exclusivo `a7eef169f38d4a2d850c4bbed602f043`; tag `v1-realtime-app-staging` |
 | Firmware de teste | R2 privado `maltworks-staging-firmware` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
 | Anexos de lotes | R2 privado `maltworks-staging-batch-files` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
 | Admin | Worker estático `maltworks-admin-site-staging` | Publicar assets de `netoceni/maltworksadmin` |
@@ -57,13 +58,24 @@ Uma nova listagem confirmou que ele não existia; uma única repetição criou o
 Os recursos anteriores foram preservados. Atenção ao nome: a configuração de
 produção usa `maltworks-recovery-20261027` (UUID `a1bf5a75-1bec-4437-92fa-64e69c3da081`);
 também existe um banco legado chamado `maltworks-production`, com UUID distinto.
-Nenhum deles nem o Lab foi reutilizado. Os recursos são exclusivos, mas ainda não
-estão ligados a um Worker publicado de staging.
+Nenhum deles nem o Lab foi reutilizado. Os novos recursos estão vinculados somente
+ao Worker privado `maltworks-api-staging` nesta publicação.
 
 Foi gerado localmente `wrangler.app-staging.jsonc`, ignorado pelo Git, com o UUID
-novo e bindings `DB`, `FIRMWARE`, `BATCH_FILES`. A configuração continua sem routes,
-workers.dev, preview URLs ou EMAIL e não foi enviada ao Cloudflare. O template
+novo e bindings `DB`, `FIRMWARE`, `BATCH_FILES`. A configuração aplicada continua sem routes,
+workers.dev, preview URLs ou EMAIL. O template
 versionado mantém seu placeholder. Os quatro testes do gerador passaram novamente.
+
+Primeira publicação privada: código do commit `e9606f45c237ae38ac22c49ade252c0d7201457f`,
+versão `7a78a58f-842d-4524-981f-70bfd65374f8`, deployment
+`28f2a228-f6df-4226-9358-73c566c8b721`. O inventário remoto confirmou os três bindings
+`secret_text`, o novo DO com `use_sqlite=true`, o D1 e os dois buckets esperados.
+Produção/Lab tiveram settings, schedules e deployments comparados antes/depois, sem
+mudanças. Todos os custom domains e routes da zona permaneceram idênticos;
+`api-staging.maltworks.com.br` continua no Lab antigo. Cron inicial de rollup a cada
+cinco minutos ativo, manutenção e retenções desativadas. Nenhum usuário/dispositivo
+foi cadastrado. Não foi aberto endpoint público para testar health/HTTP/WebSocket.
+Evidências e limites em [staging-private-publication.json](staging-private-publication.json).
 
 O Cloud de produção continua no Pages `maltworks-cloud-app`. Apenas o novo staging
 usa Static Assets em um Worker, para manter nomes, URLs e etapas de publicação explícitos.
@@ -163,17 +175,19 @@ repositórios, com ACL privada e validação de recuperação. Nenhum valor foi 
 versionado, exportado em texto ou enviado ao Cloudflare. O helper local verifica
 também a ausência dos valores no índice Git e não rotaciona um cofre existente.
 
-**Cadastro remoto pendente:** leitura de `versions list` confirmou que
-`maltworks-api-staging` ainda não existe (10007). `versions secret bulk` aceita stdin
-e cria uma versão sem ativar tráfego, mas exige versão base. A config contém migration
-inicial de DO; com Wrangler 4.118.0, não presumir que upload-only inicializa essa
-pilha. A primeira criação/publicação privada continua dependendo de autorização.
-Não usar `secret put/bulk` normal, o botão Deploy ou o script antigo de segredos do Lab.
-Nenhum upload, Worker placeholder, versão, secret remoto ou deploy foi criado aqui.
+**Cadastro remoto concluído na publicação privada autorizada:** `wrangler deploy`
+com a config privada e `--secrets-file` enviou os três valores junto ao código e à
+migration inicial do DO. Foi usado um JSON temporário fora do Git, em diretório com
+ACL privada; arquivo e logs temporários foram removidos ao final. Os valores não
+foram exibidos/versionados nem rotacionados. O cofre DPAPI permanece preservado.
+O remoto confirma os nomes como `secret_text`, sem permitir leitura dos valores.
+O Worker não existia antes (10007); agora tem versão base. Para futuras alterações
+não ativadas, `versions secret bulk` continua disponível. Não usar scripts do Lab.
 
-Procedimento, limites e validações em [staging-secrets.md](staging-secrets.md);
-[registro sem valores](staging-secrets-preparation.json). Arquivos locais cifrados
-não são enviados automaticamente ao Worker; preservar o perfil/chaves DPAPI do usuário.
+Procedimento, histórico e validações em [staging-secrets.md](staging-secrets.md) e
+[registro sem valores](staging-secrets-preparation.json). A preparação local sozinha
+não envia os secrets; nesta etapa houve envio explicitamente autorizado. Preservar
+o perfil/chaves DPAPI do usuário.
 
 Após as migrations no novo banco: cadastrar contas de teste e organização de cada
 plano; promover somente o administrador de teste pelo fluxo bootstrap existente;
@@ -225,11 +239,11 @@ aceitar a nova pilha.
    `5151e251-52c1-4406-8ae9-c6d38961d124`, com `wrangler.app-staging.jsonc`.
    Não reaplicar manualmente nem usar `db:migrate:remote` padrão (seleciona produção).
    Qualquer futura migration fora desse intervalo precisa de autorização própria.
-5. **Concluído: secrets exclusivos preparados somente no cofre local.** Pendentes:
-   cadastro remoto, primeira publicação dos três Workers com configs privadas e
-   namespace DO próprio. Revisar a sequência inicial de versão/DO/secrets antes de
-   autorizar; não executar scripts npm `deploy` padrão. Confirmar metadados e
-   ausência de URLs públicas na etapa de publicação futura.
+5. **Concluído para a API: secrets cadastrados, primeira publicação privada e DO
+   próprio verificados**, sem URLs públicas. Ainda faltam as publicações privadas
+   de Admin/Cloud, mediante autorização. Não executar scripts npm `deploy` padrão
+   para staging. O código publicado está fixado no commit indicado acima; mudanças
+   posteriores somente documentais não exigem nova publicação da API.
 6. Configurar/auditar Access antes de ativar hostnames. Criar os custom domains
    `app-staging` e `admin-staging`, com certificado válido e DNS gerenciado pelo
    fluxo de custom domain. Não inventar CNAME para `workers.dev` desativado.
@@ -291,11 +305,12 @@ sobrescritos. A geração lê a estrutura da config, não confirma IDs remotos.
 Após a incorporação do Cloud #13 ao #12, a pendência de dependências deixa de
 bloquear a preparação desse conjunto. A criação do D1/R2 também foi concluída.
 As migrations 0001–0018 no banco novo também estão concluídas e validadas.
-Os três secrets também estão preparados localmente, sem cadastro remoto.
-Continuam pendentes auditoria DNS/Access, cadastro remoto dos secrets e contas de teste,
-publicação privada e namespace DO, proteção/ativação dos domínios e
+Os três secrets estão preparados localmente e cadastrados na API publicada privadamente,
+com DO SQLite exclusivo. Continuam pendentes auditoria DNS/Access e contas de teste,
+publicação privada de Admin/Cloud, proteção/ativação dos domínios e
 transferência de `api-staging`, seguida de validação com controladores simulados.
-Não houve deploy, merge na main ou alteração de outro D1/R2. O checklist
+Somente a API de staging foi publicada; não houve merge na main, publicação de
+produção/Lab/Admin/Cloud ou alteração de domínios/Access. O checklist
 do Cloud está em [staging.md](https://github.com/netoceni/maltworkspanel/blob/prepare/full-staging-20261110/docs/staging.md).
 
 Referências oficiais: [configuração Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/),

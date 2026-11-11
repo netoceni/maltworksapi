@@ -1,0 +1,125 @@
+{
+  "verified_at": "2026-11-11T00:37:37.936Z",
+  "account_id": "4e8c08f70722d344cf39c362a110d706",
+  "worker_name": "maltworks-api-staging",
+  "source_branch": "prepare/full-staging-20261110",
+  "source_commit": "e9606f45c237ae38ac22c49ade252c0d7201457f",
+  "cli": "project-local Wrangler 4.118.0",
+  "version_id": "7a78a58f-842d-4524-981f-70bfd65374f8",
+  "deployment_id": "28f2a228-f6df-4226-9358-73c566c8b721",
+  "deployed_at": "2026-11-11T00:35:19.942339Z",
+  "authorization": "First private API staging publication with prepared secrets and isolated DO; no public domains and no main merge",
+  "public_access": {
+    "workers_dev_enabled": false,
+    "version_preview_urls_enabled": false,
+    "custom_domains": [],
+    "zone_routes": [],
+    "all_account_custom_domains_unchanged": true,
+    "zone_routes_unchanged": true,
+    "api_staging_custom_domain_remains_on_lab": true
+  },
+  "d1": {
+    "binding": "DB",
+    "name": "maltworks-app-staging",
+    "id": "5151e251-52c1-4406-8ae9-c6d38961d124",
+    "migrations_verified": 18,
+    "quick_check": "ok",
+    "migrations_applied_during_this_publication": false
+  },
+  "r2": [
+    {
+      "binding": "BATCH_FILES",
+      "bucket_name": "maltworks-staging-batch-files"
+    },
+    {
+      "binding": "FIRMWARE",
+      "bucket_name": "maltworks-staging-firmware"
+    }
+  ],
+  "realtime": {
+    "binding": "REALTIME",
+    "namespace_id": "a7eef169f38d4a2d850c4bbed602f043",
+    "class_name": "RealtimeHub",
+    "script": "maltworks-api-staging",
+    "use_sqlite": true,
+    "migration_tag": "v1-realtime-app-staging",
+    "isolated_from_production_and_lab": true,
+    "instance_invocation_tested": false
+  },
+  "secret_binding_names": [
+    "BOOTSTRAP_SECRET",
+    "PASSWORD_PEPPER",
+    "PASSWORD_RESET_SECRET"
+  ],
+  "secret_binding_type": "secret_text",
+  "secret_values_displayed_or_versioned": false,
+  "vault_rotated": false,
+  "secret_transport": {
+    "method": "wrangler deploy --secrets-file, same initial publication as code/DO",
+    "private_temporary_file_outside_repository": true,
+    "restricted_to_windows_user_and_system": true,
+    "removed_in_finally": true,
+    "client_log_sanitization": true,
+    "raw_temporary_logs_removed": true
+  },
+  "schedule": {
+    "crons": [
+      "*/5 * * * *"
+    ],
+    "rollup_only": true,
+    "maintenance_enabled": false,
+    "retention_days": {
+      "raw": 0,
+      "five_minute": 0,
+      "hourly": 0
+    }
+  },
+  "email_enabled": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "redact_query_string": false,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "verification": {
+    "private_metadata_passed": true,
+    "production_worker_metadata_unchanged": true,
+    "lab_worker_metadata_unchanged": true,
+    "existing_namespace_metadata_unchanged": true,
+    "typecheck_passed": true,
+    "config_tests_passed": 4,
+    "dry_run_with_fixture_secrets_passed": true,
+    "worker_startup_ms_reported": 2,
+    "http_and_websocket_end_to_end_tested": false,
+    "accounts_or_devices_created": false
+  },
+  "events": [
+    {
+      "phase": "post-publication metadata read",
+      "issue": "Transient 401 on two Lab metadata GETs",
+      "resolved": "CLI and read-only GET retries succeeded; protected metadata matched baseline; no repeated deployment"
+    }
+  ],
+  "remaining": [
+    "Publish Admin and Cloud privately under separate authorization",
+    "Audit Access/DNS and approved tester identities/service tokens",
+    "Create test accounts/organizations/simulated devices",
+    "Activate protected hostnames and explicitly cut over api-staging from Lab",
+    "Run remote HTTP/WebSocket/R2/plan/simulator and recovery validations"
+  ],
+  "main_merged": false,
+  "production_deployed": false,
+  "lab_deployed": false,
+  "admin_or_cloud_deployed": false,
+  "dns_or_access_changed": false
+}
