@@ -94,9 +94,11 @@ Lab antigo e utiliza o fluxo de publicação imediata.
 
 O estado correto é **cofre local preservado / secrets cadastrados / API e DO privados
 publicados**. O código da aplicação não foi alterado para efetuar a publicação.
-Continuam pendentes contas de teste, DNS/Access, Admin/Cloud, ativação de domínios
-protegidos e testes remotos com simuladores. Sem URL pública, não foi feito health
+Admin/Cloud também foram publicados privadamente depois, sem acessar ou rotacionar
+o cofre. Continuam pendentes contas de teste, DNS/Access, ativação de domínios
+protegidos e testes remotos com simuladores. Sem endpoint privado/protegido, não foi feito health
 HTTP/WebSocket remoto; não abrir endpoint para contornar essa limitação.
+Preparação da próxima etapa: [validação integrada](staging-integrated-validation.md).
 
 Referências oficiais:
 [secrets em Workers](https://developers.cloudflare.com/workers/configuration/secrets/),

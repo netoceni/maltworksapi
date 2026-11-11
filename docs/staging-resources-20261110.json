@@ -112,16 +112,17 @@
     "public_routes": [],
     "uploaded": true
   },
-  "worker_deployments": 1,
+  "worker_deployments": 3,
   "main_merges": 0,
   "object_uploads": 0,
   "dns_or_access_changed": false,
   "remaining": [
-    "Publish Admin and Cloud privately under separate authorization",
-    "Audit Access/DNS and approved tester identities/service tokens",
-    "Create test accounts/organizations/simulated devices",
-    "Activate protected hostnames and explicitly cut over api-staging from Lab",
-    "Run remote HTTP/WebSocket/R2/plan/simulator and recovery validations"
+    "Audit Access/DNS/approved test identities and choose protected or private runtime access",
+    "Authorize protected hostname cutover after access controls and rollback are reviewed",
+    "Provision fresh staging-only test users, grants and simulator credentials",
+    "Run remote integrated browser/HTTP/WS/R2/plan/downgrade matrix",
+    "Verify runtime observability on static-only frontends",
+    "Retire legacy Lab only after full staging acceptance"
   ],
   "creation_checked_at": "2026-11-10T23:44:01.255Z",
   "creation_authorization": "User authorized only staging D1 and R2 creation; no migrations, main merge or deployment",
@@ -147,5 +148,30 @@
     "isolated_from_production_and_lab": true,
     "instance_invocation_tested": false
   },
-  "publication_evidence": "staging-private-publication.json"
+  "publication_evidence": "staging-private-publication.json",
+  "static_publication_checked_at": "2026-11-11T01:04:24.186Z",
+  "static_workers": [
+    {
+      "name": "maltworks-admin-site-staging",
+      "source_commit": "02fa706bbe3e68b2e5fba87d4a0123483da39984",
+      "version_id": "494d4f56-4d11-4b60-ba67-5678118b0cb3",
+      "deployment_id": "45e3a6ed-3a32-4e9a-ac65-4fe2c5bdd888",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "data_or_secret_bindings": []
+    },
+    {
+      "name": "maltworks-cloud-site-staging",
+      "source_commit": "0c69022299433b4830a88a18eb90fae39c72e7bd",
+      "version_id": "e69b60de-04f9-470c-b322-ee27f70168ad",
+      "deployment_id": "da59bf45-2627-4968-91a3-38c05e2b6f06",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [],
+      "data_or_secret_bindings": []
+    }
+  ],
+  "static_publication_evidence": "staging-static-publication.json",
+  "integrated_validation_plan": "staging-integrated-validation.md"
 }

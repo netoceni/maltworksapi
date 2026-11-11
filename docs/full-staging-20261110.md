@@ -1,9 +1,13 @@
 # Staging completo de Admin + Cloud + API — preparação de 10/11/2026
 
-Status: API de staging publicada privadamente, com os três secrets e namespace DO
+Status: API, Admin e Cloud de staging publicados privadamente. A API usa três secrets e namespace DO
 SQLite exclusivos, D1/R2 isolados e migrations 0001–0018 previamente validadas.
 Workers.dev, previews, routes e custom domains continuam desativados para a nova API.
-Admin/Cloud ainda não foram publicados em staging; a main continua sem merge.
+Admin/Cloud usam Workers estáticos exclusivos, sem bindings de dados; a main continua sem merge.
+O staging completo será o ambiente de homologação consolidado. Lab e hostname
+`api-staging` permanecem intactos até a transferência protegida e o aceite integrado.
+Execução local, preparação dos simuladores e pendências remotas:
+[validação integrada](staging-integrated-validation.md).
 API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 `netoceni/maltworkspanel`. As branches `prepare/full-staging-20261110` não alteram a main.
 
@@ -16,8 +20,8 @@ API/Admin partem de `integration/development-20261110`; Cloud usa o repositório
 | Tempo real | DO SQLite `RealtimeHub` do novo Worker | Namespace exclusivo `a7eef169f38d4a2d850c4bbed602f043`; tag `v1-realtime-app-staging` |
 | Firmware de teste | R2 privado `maltworks-staging-firmware` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
 | Anexos de lotes | R2 privado `maltworks-staging-batch-files` | Criado, zero objetos, r2.dev desativado e nenhum custom domain |
-| Admin | Worker estático `maltworks-admin-site-staging` | Publicar assets de `netoceni/maltworksadmin` |
-| Cloud do cliente | Worker estático `maltworks-cloud-site-staging` | Publicar assets de `netoceni/maltworkspanel` |
+| Admin | Worker estático `maltworks-admin-site-staging` | Publicado privadamente; versão `494d4f56-4d11-4b60-ba67-5678118b0cb3` |
+| Cloud do cliente | Worker estático `maltworks-cloud-site-staging` | Publicado privadamente; versão `e69b60de-04f9-470c-b322-ee27f70168ad` |
 | Acesso | Access nos três hostnames exatos | Auditar configuração existente e preparar política de testadores e simuladores |
 | Endereços | `admin-staging`, `app-staging`, `api-staging.maltworks.com.br` | Criar os dois primeiros custom domains; planejar transferência do terceiro |
 
@@ -76,6 +80,17 @@ mudanças. Todos os custom domains e routes da zona permaneceram idênticos;
 cinco minutos ativo, manutenção e retenções desativadas. Nenhum usuário/dispositivo
 foi cadastrado. Não foi aberto endpoint público para testar health/HTTP/WebSocket.
 Evidências e limites em [staging-private-publication.json](staging-private-publication.json).
+
+Admin e Cloud foram publicados posteriormente com suas configurações privadas,
+usando os commits `02fa706bbe3e68b2e5fba87d4a0123483da39984` e
+`0c69022299433b4830a88a18eb90fae39c72e7bd`. Versões remotas confirmaram assets
+diretos, cabeçalhos e nenhum binding; workers.dev/previews desativados, sem routes,
+custom domains ou schedules. Inventários de Workers existentes, DOs, Pages e suas
+publicações de produção, domínios e rotas foram comparados antes/depois, sem mudança.
+Não houve nova publicação da API, acesso ao cofre ou criação de dados de teste.
+Evidências: [staging-static-publication.json](staging-static-publication.json).
+Logging/traces dos frontends estáticos não foram comprovados pelos metadados,
+apesar da configuração declarada; verificar na futura etapa de acesso.
 
 O Cloud de produção continua no Pages `maltworks-cloud-app`. Apenas o novo staging
 usa Static Assets em um Worker, para manter nomes, URLs e etapas de publicação explícitos.
@@ -223,7 +238,7 @@ Sem expiração, o banco cresce: acompanhar uso e volume dos simuladores.
 Não desligar os limites de segurança dos scripts antigos do Lab para fazê-los
 aceitar a nova pilha.
 
-## Sequência de ativação — D1/R2 e migrations concluídos
+## Sequência de ativação — recursos, migrations e publicação privada concluídos
 
 1. Revisar PRs e CI, reconciliar código de integração e registrar SHAs aprovados.
    Auditar no painel eventuais Workers Builds/Git integrations que possam publicar
@@ -239,11 +254,10 @@ aceitar a nova pilha.
    `5151e251-52c1-4406-8ae9-c6d38961d124`, com `wrangler.app-staging.jsonc`.
    Não reaplicar manualmente nem usar `db:migrate:remote` padrão (seleciona produção).
    Qualquer futura migration fora desse intervalo precisa de autorização própria.
-5. **Concluído para a API: secrets cadastrados, primeira publicação privada e DO
-   próprio verificados**, sem URLs públicas. Ainda faltam as publicações privadas
-   de Admin/Cloud, mediante autorização. Não executar scripts npm `deploy` padrão
-   para staging. O código publicado está fixado no commit indicado acima; mudanças
-   posteriores somente documentais não exigem nova publicação da API.
+5. **Concluído para API/Admin/Cloud: publicação privada**, com secrets/DO próprios
+   na API, sem URLs públicas ou bindings de dados nos frontends. Não executar scripts
+   npm `deploy` padrão para staging. Os commits publicados estão registrados acima;
+   mudanças posteriores somente documentais não exigem nova publicação.
 6. Configurar/auditar Access antes de ativar hostnames. Criar os custom domains
    `app-staging` e `admin-staging`, com certificado válido e DNS gerenciado pelo
    fluxo de custom domain. Não inventar CNAME para `workers.dev` desativado.
@@ -307,10 +321,10 @@ bloquear a preparação desse conjunto. A criação do D1/R2 também foi conclu�
 As migrations 0001–0018 no banco novo também estão concluídas e validadas.
 Os três secrets estão preparados localmente e cadastrados na API publicada privadamente,
 com DO SQLite exclusivo. Continuam pendentes auditoria DNS/Access e contas de teste,
-publicação privada de Admin/Cloud, proteção/ativação dos domínios e
+proteção/ativação dos domínios e
 transferência de `api-staging`, seguida de validação com controladores simulados.
-Somente a API de staging foi publicada; não houve merge na main, publicação de
-produção/Lab/Admin/Cloud ou alteração de domínios/Access. O checklist
+API, Admin e Cloud de staging já foram publicados privadamente. Não houve merge na
+main, publicação de produção/Lab ou alteração de domínios/Access. O checklist
 do Cloud está em [staging.md](https://github.com/netoceni/maltworkspanel/blob/prepare/full-staging-20261110/docs/staging.md).
 
 Referências oficiais: [configuração Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/),
