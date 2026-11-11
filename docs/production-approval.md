@@ -27,7 +27,9 @@ Estado confirmado em 11/11/2026 no GitHub e por consulta somente leitura:
 - **Prevent self-review** desabilitado: o único aprovador pode iniciar e aprovar a execução
   em duas ações explícitas. Exigir outra pessoa depende de cadastrar outro aprovador.
 - Nenhum segredo ou variável cadastrado no ambiente. Os segredos existentes do repositório
-  não foram movidos, alterados nem revelados; sua governança permanece pendente.
+  não foram movidos, alterados nem revelados. A consulta dos metadados confirmou os nomes
+  `CLOUDFLARE_API_TOKEN` e `CLOUDFLARE_ACCOUNT_ID` no repositório; validade, permissões e
+  isolamento das credenciais continuam pendentes de confirmação na origem segura.
 
 Para revisar ou reproduzir a configuração em Settings → Environments → **production**:
 
@@ -57,9 +59,10 @@ ativo enquanto a proposta não for integrada. Não promover os PRs para produç�
 proteção que ainda não está ativa. A proposta não altera os comandos nem o alvo de produção definido
 no Wrangler: Worker `maltworks-api`, binding `DB` → `maltworks-recovery-20261027`.
 
-Para comprovar a espera e a recusa sem afetar recursos, preparar futuramente um ensaio separado que
-termine em uma etapa sem efeito. **Não usar o workflow real de produção como teste**, pois aprová-lo
-autoriza as migrações e o deploy. Nenhuma execução desse workflow foi iniciada nesta preparação.
+O [ensaio separado](production-approval-rehearsal.md) está preparado e termina somente em uma
+mensagem fixa. Sua execução permanece pendente de integração e autorização futuras.
+**Não usar o workflow real de produção como teste**, pois aprová-lo autoriza as migrações e o deploy.
+Nenhuma execução desses workflows foi iniciada nesta preparação.
 
 Os testes locais `node --test scripts/production-approval.spec.mjs` usam respostas simuladas, sem
 rede, token real, D1 ou Worker. Eles cobrem ausência de regras/aprovação, bot, rejeição,
