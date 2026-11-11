@@ -1,7 +1,7 @@
 # Aprovação manual para produção
 
 Proposta preparada em 11/11/2026, sobre `main` em
-`a2e4bfd0794d6bfc2d4defa788973fcd1f509750`. Não foi integrada nem executada.
+`a2e4bfd0794d6bfc2d4defa788973fcd1f509750`. O workflow proposto não foi integrado nem executado.
 
 ## Comportamento proposto
 
@@ -16,9 +16,20 @@ Proposta preparada em 11/11/2026, sobre `main` em
 - Migração e deploy usam o mesmo commit validado; há uma aprovação para a sequência inteira.
   A concorrência de produção continua serializada e sem cancelamento automático.
 
-## Configuração necessária antes de habilitar produção
+## Configuração do ambiente
 
-Em `netoceni/maltworksapi` → Settings → Environments → criar **production**:
+Estado confirmado em 11/11/2026 no GitHub e por consulta somente leitura:
+
+- Ambiente **production**, ID `26973307828`, criado e configurado.
+- **Required reviewers** habilitado com o usuário `netoceni`.
+- Bypass de regras por administradores desabilitado, conferido na tela salva.
+- **Selected branches and tags** com uma regra do tipo branch para `main` e nenhuma tag.
+- **Prevent self-review** desabilitado: o único aprovador pode iniciar e aprovar a execução
+  em duas ações explícitas. Exigir outra pessoa depende de cadastrar outro aprovador.
+- Nenhum segredo ou variável cadastrado no ambiente. Os segredos existentes do repositório
+  não foram movidos, alterados nem revelados; sua governança permanece pendente.
+
+Para revisar ou reproduzir a configuração em Settings → Environments → **production**:
 
 1. Ativar **Required reviewers** e escolher explicitamente quem aprovará as publicações.
 2. Desativar **Allow administrators to bypass configured protection rules**.
@@ -34,10 +45,10 @@ Em `netoceni/maltworksapi` → Settings → Environments → criar **production*
    Após inventariar os demais consumidores, retirar eventuais cópias dos segredos de produção no nível
    do repositório para evitar que outros workflows os usem fora do ambiente aprovado.
 
-Na consulta somente leitura em 11/11/2026, a API retornou **zero ambientes** no GitHub.
-Essa configuração permanece pendente. A trava impede migração/deploy caso o ambiente seja criado
-automaticamente pelo GitHub sem regras, ou caso o job comece sem uma aprovação humana registrada.
-As regras administrativas e a localização dos segredos precisam de confirmação após configuração.
+Na consulta inicial do mesmo dia havia zero ambientes; esse estado foi substituído pela
+configuração acima. A trava continua bloqueando migração/deploy se faltarem regras ou aprovação
+humana registrada. Criar o ambiente não protege o workflow antigo que ainda não o referencia:
+a proteção deste fluxo só será vinculada após a integração futura e autorizada do PR #31.
 
 ## Integração e validação futura
 
