@@ -15,6 +15,7 @@ import {
   telemetryPersistenceIntervalSeconds,
 } from "./telemetry-sampling";
 import { reconcileOtaFromTelemetry } from "./ota";
+import { persistDensimeter, validateDensimeter } from "./densimeter";
 
 const DEVICE_ID_PATTERN = /^MW-[0-9A-F]{12}$/;
 const BOOT_ID_PATTERN = /^[0-9A-F]{8}$/;
@@ -99,6 +100,9 @@ export async function ingestTelemetry(
     ).bind(payload.deviceId, pairingCodeHash).run();
   }
 
+  // Sensor samples are durable independently of 180-second Controller snapshots.
+  // Await storage before ACK; a failed response can safely be replayed.
+  const densimeterAck = await persistDensimeter(env.DB, payload.deviceId, payload.densimeter, now);
   const previous = await previousDeviceState(env.DB, payload.deviceId);
   const samplingEnv = env as Env & { TELEMETRY_PERSIST_INTERVAL_SECONDS?: string };
   const persistenceInterval = telemetryPersistenceIntervalSeconds(
@@ -274,6 +278,7 @@ export async function ingestTelemetry(
       deviceStatus: registeredNow ? "pending" : credential.status,
       serverTime: now,
       command,
+      ...(densimeterAck ? { densimeterAck } : {}),
       requestId,
     },
     registeredNow ? 202 : 200,
@@ -334,6 +339,7 @@ export function validateTelemetry(value: unknown): TelemetryPayload {
 
   return {
     schemaVersion: schemaVersion as 1,
+    ...(root.densimeter !== undefined ? { densimeter: validateDensimeter(root.densimeter) } : {}),
     deviceId,
     bootId,
     sequence: integerValue(root.sequence, "sequence", 1, 4_294_967_295),

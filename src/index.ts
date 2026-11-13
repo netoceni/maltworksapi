@@ -15,6 +15,7 @@ import {
 } from "./devices";
 import { addCors, errorResponse, jsonResponse, preflightResponse } from "./http";
 import { ingestTelemetry } from "./telemetry";
+import { densimeterHistory } from "./densimeter";
 import { runTelemetryRetention, shouldPruneTelemetry, scheduledJobGates, type ScheduledJobGateVars } from "./retention";
 import { runIntelligentHistoryRollup, shouldRollupHistory } from "./history-rollup";
 import { aggregatedDeviceHistory } from "./history-query";
@@ -340,6 +341,10 @@ async function route(
   }
 
   const latestMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/latest$/u.exec(path);
+  const densimeterMatch = /^\/v1\/devices\/(MW-[0-9A-F]{12})\/densimeter$/u.exec(path);
+  if (request.method === "GET" && densimeterMatch?.[1]) {
+    return densimeterHistory(request, env, requestId, densimeterMatch[1]);
+  }
   if (request.method === "GET" && latestMatch?.[1]) {
     return latestDeviceState(request, env, requestId, latestMatch[1]);
   }
