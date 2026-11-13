@@ -1,3 +1,5 @@
+import type { DensimeterTelemetry } from "./densimeter";
+
 export interface TelemetryPayload {
   schemaVersion: 1;
   deviceId: string;
@@ -52,6 +54,7 @@ export interface TelemetryPayload {
     };
   };
   commandResult?: CommandResult;
+  densimeter?: DensimeterTelemetry | null;
 }
 
 export interface CommandResult {

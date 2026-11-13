@@ -98,6 +98,11 @@ export function shouldPersistTelemetry(
   }
 
   const oldAck = old.commandResult;
+  // Persist pairing and new sensor samples immediately, not rotating backlog chunks.
+  const newestIndex = (value: TelemetryPayload) => Math.max(0, ...(value.densimeter?.readings.map(r => r.index) ?? []));
+  if (old.densimeter?.sensorId !== payload.densimeter?.sensorId ||
+      (old.densimeter === undefined) !== (payload.densimeter === undefined) ||
+      newestIndex(old) !== newestIndex(payload)) return true;
   const newAck = payload.commandResult;
   if (oldAck?.id !== newAck?.id || oldAck?.status !== newAck?.status) return true;
 
