@@ -1,0 +1,35 @@
+name: Ensaio seguro de aprovação
+run-name: Ensaio seguro da aprovação manual de production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_rehearsal:
+        description: 'Executar apenas o ensaio da aprovação, sem alterar recursos'
+        required: true
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: maltworks-production-approval-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  approval:
+    name: Aprovação manual sem operações de produção
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_rehearsal && github.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment:
+      name: production
+    steps:
+      - name: Registrar aprovação do ensaio
+        shell: bash
+        run: |
+          printf '%s\n' \
+            'Ensaio da aprovação manual concluído.' \
+            'Este job não referencia segredos nem executa operações de produção.' \
+            'Nenhum comando de publicação ou migração foi executado.' \
+            >> "$GITHUB_STEP_SUMMARY"

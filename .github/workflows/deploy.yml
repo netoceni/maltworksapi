@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'Solicitar aprovação para migrar o D1 e publicar a API de produção'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -14,14 +20,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Test and deploy
+  validate:
+    name: Validate API without production credentials
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -32,17 +41,61 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test production approval guard
+        run: node --test scripts/production-approval.spec.mjs
+
       - name: Check TypeScript
         run: npm run check
 
       - name: Run tests
         run: npm test
 
+  deploy:
+    name: Approve D1 migrations and API deployment
+    needs: validate
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirm_production }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Required reviewers must be configured in Settings > Environments.
+    # The guard below also rejects missing rules or a missing human approval record.
+    environment: production
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify manual approval before D1 migrations
+        run: node scripts/production-approval.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_CONFIRMED: ${{ inputs.confirm_production }}
+
       - name: Apply D1 migrations
         run: npm run db:migrate:remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify approval and main again before deployment
+        run: node scripts/production-approval.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCTION_CONFIRMED: ${{ inputs.confirm_production }}
 
       - name: Deploy API to Cloudflare Workers
         run: npm run deploy
