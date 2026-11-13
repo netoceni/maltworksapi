@@ -80,10 +80,10 @@ export async function persistDensimeter(
   if (!sensor) return undefined;
   if (!sensor.readings.length) return { sensorId: sensor.sensorId, indices: [] };
   const predicates = sensor.readings.map(() => "(session_id = ? AND sequence = ?)").join(" OR ");
-  const existing = await db.prepare(`SELECT ${selection} FROM densimeter_readings
+  const lookup = db.prepare(`SELECT ${selection} FROM densimeter_readings
     WHERE device_id = ? AND sensor_id = ? AND (${predicates})`)
-    .bind(deviceId, sensor.sensorId, ...sensor.readings.flatMap(r => [r.sessionId, r.sequence]))
-    .all<DensimeterReading>();
+    .bind(deviceId, sensor.sensorId, ...sensor.readings.flatMap(r => [r.sessionId, r.sequence]));
+  const existing = await lookup.all<DensimeterReading>();
   const byIdentity = new Map(existing.results.map(r => [r.sessionId + ":" + r.sequence, r]));
   const statements: D1PreparedStatement[] = [];
   for (const r of sensor.readings) {
@@ -104,7 +104,19 @@ export async function persistDensimeter(
         r.intervalSeconds, r.angleMdeg, r.temperatureMc, r.batteryMv, r.rssi,
         r.gravitySg, r.calibrationRevision));
   }
-  if (statements.length) await db.batch(statements);
+  if (statements.length) {
+    await db.batch(statements);
+    // A concurrent request may have inserted the same identity after lookup.
+    // Verify the committed values before confirming durability to the Controller.
+    const committed = await lookup.all<DensimeterReading>();
+    const stored = new Map(committed.results.map(r => [r.sessionId + ":" + r.sequence, r]));
+    for (const r of sensor.readings) {
+      const saved = stored.get(r.sessionId + ":" + r.sequence);
+      if (!saved || Object.keys(r).some(key => r[key as keyof DensimeterReading] !== saved[key as keyof DensimeterReading])) {
+        throw new ApiError(409, "DENSIMETER_REPLAY_CONFLICT", "Reenvio difere da medicao original.");
+      }
+    }
+  }
   return { sensorId: sensor.sensorId, indices: sensor.readings.map(r => r.index) };
 }
 

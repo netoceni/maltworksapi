@@ -118,6 +118,26 @@ describe("native densimeter cloud pipeline", () => {
     expect((await a.history(b.cookie)).status).toBe(404);
     expect((await exports.default.fetch(`${base}/v1/devices/${a.deviceId}/densimeter`)).status).toBe(401);
   });
+  it("does not acknowledge a conflicting concurrent replay", async () => {
+    const f = await fixture();
+    const responses = await Promise.all([
+      f.send(sensor(reading())), f.send(sensor({ ...reading(), batteryMv: 4000 })),
+    ]);
+    expect(responses.map(r => r.status).sort()).toEqual([200, 409]);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM densimeter_readings WHERE device_id = ?")
+      .bind(f.deviceId).first<{ n: number }>())?.n).toBe(1);
+  });
+  it("persists new sensor samples immediately and hides a removed pairing without deleting its history", async () => {
+    const f = await fixture();
+    expect((await f.send(sensor(reading(1)))).status).toBe(200);
+    expect((await f.send(sensor(reading(2)))).status).toBe(200);
+    const latest = await exports.default.fetch(`${base}/v1/devices/${f.deviceId}/latest`, { headers: { Cookie: f.cookie } });
+    expect(await latest.json()).toMatchObject({ state: { densimeter: { readings: [{ index: 2 }] } } });
+    expect((await f.send(null)).status).toBe(200);
+    expect(await (await f.history()).json()).toMatchObject({ sensorId: null, readings: [] });
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM densimeter_readings WHERE device_id = ?")
+      .bind(f.deviceId).first<{ n: number }>())?.n).toBe(2);
+  });
   it("validates bounds, identity, clocks and calibrated density", () => {
     for (const patch of [
       { batteryMv: 5000 }, { temperatureMc: NaN }, { angleMdeg: -1 },
